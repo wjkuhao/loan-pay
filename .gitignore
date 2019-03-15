@@ -5,3 +5,5 @@
 .project
 log
 target
+*.DS_Store
+logs
