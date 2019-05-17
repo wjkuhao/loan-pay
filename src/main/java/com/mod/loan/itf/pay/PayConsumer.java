@@ -55,6 +55,9 @@ public class PayConsumer {
 		case "huiju":
 			orderPayService.huijuPay(payMessage);
 			break;
+		case "yeepay":
+			orderPayService.yeePay(payMessage);
+			break;
 		default:
 			logger.error("放款消息payType异常,payMessage={}", payMessage);
 			break;

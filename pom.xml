@@ -101,6 +101,14 @@
 			<groupId>jaxen</groupId>
 			<artifactId>jaxen</artifactId>
 		</dependency>
+
+		<!-- 易宝支付架包 -->
+		<dependency>
+			<groupId>com.yeepay.g3</groupId>
+			<artifactId>yop-java-sdk</artifactId>
+			<version>3.2.9</version>
+		</dependency>
+
 	</dependencies>
 
 	<profiles>

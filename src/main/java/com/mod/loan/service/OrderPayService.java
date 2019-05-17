@@ -48,4 +48,8 @@ public interface OrderPayService extends BaseService<OrderPay, String> {
 	 * @param payResultMessage
 	 */
 	void huijuPayQuery(OrderPayQueryMessage payResultMessage);
+
+	void yeePay(OrderPayMessage payMessage);
+
+	void yeePayQuery(OrderPayQueryMessage payResultMessage);
 }

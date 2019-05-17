@@ -52,6 +52,16 @@ public class Bank {
     @Column(name = "code_helipay")
     private String codeHelipay;
 
+    @Column(name = "code_yeepay")
+    private String codeYeepay;
+
+    public String getCodeYeepay() {
+        return codeYeepay;
+    }
+
+    public void setCodeYeepay(String codeYeepay) {
+        this.codeYeepay = codeYeepay;
+    }
     /**
      * @return code
      */

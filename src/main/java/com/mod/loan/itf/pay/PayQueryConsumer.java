@@ -39,6 +39,9 @@ public class PayQueryConsumer {
 		case 3:
 			orderPayService.huijuPayQuery(payResultMessage);
 			break;
+		case 4:
+			orderPayService.yeePayQuery(payResultMessage);
+			break;
 		default:
 			logger.error("放款查询消息payType异常,payResultMessage={}", payResultMessage);
 			break;

@@ -14,6 +14,7 @@ import com.mod.loan.config.redis.RedisMapper;
 import com.mod.loan.model.*;
 import com.mod.loan.service.*;
 import com.mod.loan.util.MD5;
+import com.mod.loan.util.RandomUtils;
 import com.mod.loan.util.TimeUtils;
 import com.mod.loan.util.XmlUtils;
 import com.mod.loan.util.heliutil.HeliPayUtils;
@@ -75,6 +76,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     private RedisMapper redisMapper;
     @Autowired
     private RabbitTemplate rabbitTemplate;
+    @Autowired
+    private YeepayService yeepayService;
 
     @Override
     public void helibaoPay(OrderPayMessage payMessage) {
@@ -330,8 +333,10 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 对单笔代付响应信息的处理
      *
-     * @param httpResponseJson 响应信息json字符串
-     * @param key              商户秘钥
+     * @param httpResponseJson
+     *            响应信息json字符串
+     * @param key
+     *            商户秘钥
      */
     @SuppressWarnings("unchecked")
     private boolean doResponseInfo(String httpResponseJson, String key) {
@@ -356,7 +361,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 获取请求数据签名串信息 必须按新代付接口文档请求参数信息顺序来进行字符串的拼接，详情请参考新代付接口文档请求报文
      *
-     * @param params 请求数据参数
+     * @param params
+     *            请求数据参数
      * @return 返回请求签名串
      */
     private String getRequestSign(Map<String, Object> params) {
@@ -379,7 +385,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 获取响应数据签名串信息 必须按新代付接口文档应答参数信息顺序来进行字符串的拼接，详情请参考新代付接口文档的应答报文
      *
-     * @param params 响应数据参数
+     * @param params
+     *            响应数据参数
      * @return 返回响应签名串
      */
     private String getResponseSign(Map<String, Object> params) {
@@ -575,6 +582,112 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("汇聚查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("汇聚查询代付结果异常", e);
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+        }
+    }
+
+    @Override
+    public void yeePay(OrderPayMessage payMessage) {
+        try {
+            Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
+            if (order.getStatus() != 22) { // 放款中的订单才能放款
+                logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
+                return;
+            }
+            Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
+            UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
+            User user = userService.selectByPrimaryKey(order.getUid());
+
+            String amount = order.getActualMoney().toString();
+            if ("dev".equals(Constant.ENVIROMENT)) {
+                amount = "0.21";
+            }
+
+            Bank bank = bankService.selectByPrimaryKey(userBank.getCardCode());
+            if (null == bank) {
+                logger.info("放款失败,找不到对应uid为{}的银行卡名称{},订单号为{}", user.getId(), userBank.getCardName(), order.getId());
+                return;
+            }
+
+            String batchNo = TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6);
+            String serials_no = "p"+ batchNo;
+
+            String errMsg = yeepayService.payToCustom(merchant.getYeepay_group_no(),
+                    merchant.getYeepay_loan_appkey(), merchant.getYeepay_loan_private_key(),
+                    batchNo, serials_no, amount, user.getUserName(), userBank.getCardNo(), bank.getCodeYeepay());
+
+            OrderPay orderPay = new OrderPay();
+            orderPay.setPayNo(serials_no);
+            orderPay.setUid(order.getUid());
+            orderPay.setOrderId(order.getId());
+            orderPay.setPayMoney(new BigDecimal(amount));
+            orderPay.setPayType(4); // 类型：易宝
+            orderPay.setBank(userBank.getCardName());
+            orderPay.setBankNo(userBank.getCardNo());
+            orderPay.setCreateTime(new Date());
+
+            if (StringUtils.isEmpty(errMsg)) {
+                logger.info("易包放款受理成功,message={}", JSON.toJSONString(payMessage));
+                orderPay.setUpdateTime(new Date());
+                orderPay.setPayStatus(1);// 受理成功,插入打款流水，不改变订单状态
+                orderService.updatePayInfo(null, orderPay);
+                // 受理成功，将消息存入死信队列，5秒后去查询是否放款成功
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
+                        new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
+            } else {
+                if ("商户可用打款余额不足".equals(errMsg)){
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "13979127403", String.valueOf(orderPay.getPayMoney())));
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "13575506440", String.valueOf(orderPay.getPayMoney())));
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "15757127746", String.valueOf(orderPay.getPayMoney())));
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "18958106941", String.valueOf(orderPay.getPayMoney())));
+                }
+
+                logger.error("易包放款受理失败,message={}, result={}", JSON.toJSONString(payMessage),
+                        JSON.toJSONString(errMsg));
+                orderPay.setRemark(errMsg);
+                orderPay.setUpdateTime(new Date());
+                orderPay.setPayStatus(2);
+                Order record = new Order();
+                record.setId(order.getId());
+                record.setStatus(23);
+                orderService.updatePayInfo(record, orderPay);
+                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
+            }
+        } catch (Exception e) {
+            logger.error("易宝订单放款异常, message={}", JSON.toJSONString(payMessage));
+            logger.error("易宝订单放款异常", e);
+        }
+    }
+
+    @Override
+    public void yeePayQuery(OrderPayQueryMessage payResultMessage) {
+        try {
+            String payNo = payResultMessage.getPayNo();
+            Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
+
+            String batchNo = payNo.substring(1);//batchNo 去掉前面的字母
+            String errMsg = yeepayService.payToCustomQuery(merchant.getYeepay_group_no(), merchant.getYeepay_loan_appkey(),
+                    merchant.getYeepay_loan_private_key(), batchNo);
+
+            logger.info("查询订单,payResultMessage={},易宝返回结果={}", JSON.toJSONString(payResultMessage), errMsg);
+            if (errMsg!=null) {
+                if (errMsg.equals("processing")){
+                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                    if (payResultMessage.getTimes() < 3) {
+                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                    } else {
+                        logger.info("查询订单,payResultMessage={},易宝返回结果={}", JSON.toJSONString(payResultMessage), errMsg);
+                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                    }
+                }else {
+                    payFail(payNo, errMsg);
+                }
+            }else {
+                paySuccess(payNo);
+            }
+        } catch (Exception e) {
+            logger.error("易宝查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
+            logger.error("易宝查询代付结果异常", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
