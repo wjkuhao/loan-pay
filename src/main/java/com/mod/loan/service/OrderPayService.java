@@ -3,6 +3,7 @@ package com.mod.loan.service;
 import com.mod.loan.common.mapper.BaseService;
 import com.mod.loan.common.message.OrderPayMessage;
 import com.mod.loan.common.message.OrderPayQueryMessage;
+import com.mod.loan.model.Order;
 import com.mod.loan.model.OrderPay;
 
 public interface OrderPayService extends BaseService<OrderPay, String> {
@@ -52,4 +53,6 @@ public interface OrderPayService extends BaseService<OrderPay, String> {
 	void yeePay(OrderPayMessage payMessage);
 
 	void yeePayQuery(OrderPayQueryMessage payResultMessage);
+
+	boolean checkPayCondition(Order order);
 }

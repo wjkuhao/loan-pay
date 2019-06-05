@@ -18,4 +18,6 @@ public interface OrderService extends BaseService<Order, Long> {
 	 */
 	int countOrderPaySuccessRecord(Long orderId);
 
+	int countOrderPaySuccessOneDay(Long uid);
+
 }

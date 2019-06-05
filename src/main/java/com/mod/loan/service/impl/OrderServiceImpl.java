@@ -37,4 +37,9 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 		return orderPayMapper.countOrderPaySuccessRecord(orderId);
 	}
 
+	@Override
+	public int countOrderPaySuccessOneDay(Long uid) {
+		return orderMapper.countOrderPaySuccessOneDay(uid);
+	}
+
 }

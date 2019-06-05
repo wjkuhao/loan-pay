@@ -87,6 +87,11 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
                 return;
             }
+
+            if (!checkPayCondition(order)){
+                return;
+            }
+
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -169,6 +174,11 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
                 return;
             }
+
+            if (!checkPayCondition(order)){
+                return;
+            }
+
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -252,6 +262,10 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
                 return;
             }
+            if (!checkPayCondition(order)){
+                return;
+            }
+
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -594,6 +608,11 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
                 return;
             }
+
+            if (!checkPayCondition(order)){
+                return;
+            }
+
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -690,6 +709,27 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             logger.error("易宝查询代付结果异常", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
+    }
+
+    @Override
+    public boolean checkPayCondition(Order order) {
+        if (order.getBorrowMoney().compareTo(new BigDecimal(5000))>=0) {
+            order.setStatus(23);
+            logger.error("代付检查异常:orderid={},放款金额={}",order.getId(), order.getBorrowMoney());
+            sendSmsMessage(order.getMerchant(), "代付检查异常:放款金额大于5000");
+            orderService.updateByPrimaryKeySelective(order);
+            return false;
+        }
+
+        int count = orderService.countOrderPaySuccessOneDay(order.getUid());
+        if (count>1){
+            order.setStatus(23);
+            logger.error("代付检查异常:orderid={},一天重复放款={}",order.getId(), order.getBorrowMoney());
+            sendSmsMessage(order.getMerchant(), "代付检查异常:一天重复放款");
+            orderService.updateByPrimaryKeySelective(order);
+            return false;
+        }
+        return true;
     }
 
     private void paySuccess(String payNo) {
