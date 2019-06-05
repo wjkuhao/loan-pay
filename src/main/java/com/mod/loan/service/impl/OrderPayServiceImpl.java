@@ -156,7 +156,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("合利宝订单放款异常, message={}", JSON.toJSONString(payMessage));
-            logger.error("合利宝订单放款异常", e);
+            logger.error("合利宝订单放款异常, error={}", e);
         }
     }
 
@@ -240,7 +240,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("富友订单放款异常， message={}，jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
-            logger.error("富友订单放款异常", e);
+            logger.error("富友订单放款异常, error={}", e);
         }
     }
 
@@ -326,7 +326,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("汇聚订单放款异常, message={}", JSON.toJSONString(payMessage));
-            logger.error("汇聚订单放款异常", e);
+            logger.error("汇聚订单放款异常, error={}", e);
         }
     }
 
@@ -440,7 +440,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("合利宝查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("合利宝查询代付结果异常", e);
+            logger.error("合利宝查询代付结果异常, error={}", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
@@ -522,7 +522,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("富友查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("富友查询代付结果异常", e);
+            logger.error("富友查询代付结果异常, error={}", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payResultMessage);
         }
     }
@@ -581,7 +581,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("汇聚查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("汇聚查询代付结果异常", e);
+            logger.error("汇聚查询代付结果异常, error={}", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
@@ -655,7 +655,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("易宝订单放款异常, message={}", JSON.toJSONString(payMessage));
-            logger.error("易宝订单放款异常", e);
+            logger.error("易宝订单放款异常, error={}", e);
         }
     }
 
@@ -687,7 +687,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("易宝查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("易宝查询代付结果异常", e);
+            logger.error("易宝查询代付结果异常, error={}", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
