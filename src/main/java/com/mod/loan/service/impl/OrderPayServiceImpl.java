@@ -13,10 +13,7 @@ import com.mod.loan.config.redis.RedisConst;
 import com.mod.loan.config.redis.RedisMapper;
 import com.mod.loan.model.*;
 import com.mod.loan.service.*;
-import com.mod.loan.util.MD5;
-import com.mod.loan.util.RandomUtils;
-import com.mod.loan.util.TimeUtils;
-import com.mod.loan.util.XmlUtils;
+import com.mod.loan.util.*;
 import com.mod.loan.util.heliutil.HeliPayUtils;
 import com.mod.loan.util.huijuutil.HttpClientUtil;
 import com.mod.loan.util.huijuutil.Md5_Sign;
@@ -631,8 +628,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             String batchNo = TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6);
             String serials_no = "p"+ batchNo;
 
-            String errMsg = yeepayService.payToCustom(merchant.getYeepay_group_no(),
-                    merchant.getYeepay_loan_appkey(), merchant.getYeepay_loan_private_key(),
+            String errMsg = yeepayService.payToCustom(DesUtil.decryption(merchant.getYeepay_group_no()),
+                    DesUtil.decryption(merchant.getYeepay_loan_appkey()), DesUtil.decryption(merchant.getYeepay_loan_private_key()),
                     batchNo, serials_no, amount, user.getUserName(), userBank.getCardNo(), bank.getCodeYeepay());
 
             OrderPay orderPay = new OrderPay();
@@ -685,8 +682,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
 
             String batchNo = payNo.substring(1);//batchNo 去掉前面的字母
-            String errMsg = yeepayService.payToCustomQuery(merchant.getYeepay_group_no(), merchant.getYeepay_loan_appkey(),
-                    merchant.getYeepay_loan_private_key(), batchNo);
+            String errMsg = yeepayService.payToCustomQuery(DesUtil.decryption(merchant.getYeepay_group_no()), DesUtil.decryption(merchant.getYeepay_loan_appkey()),
+                    DesUtil.decryption(merchant.getYeepay_loan_private_key()), batchNo);
 
             logger.info("查询订单,payResultMessage={},易宝返回结果={}", JSON.toJSONString(payResultMessage), errMsg);
             if (errMsg!=null) {
