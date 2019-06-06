@@ -11,6 +11,7 @@ import com.mod.loan.config.Constant;
 import com.mod.loan.config.rabbitmq.RabbitConst;
 import com.mod.loan.config.redis.RedisConst;
 import com.mod.loan.config.redis.RedisMapper;
+import com.mod.loan.http.OkHttpReader;
 import com.mod.loan.model.*;
 import com.mod.loan.service.*;
 import com.mod.loan.util.*;
@@ -18,15 +19,6 @@ import com.mod.loan.util.heliutil.HeliPayUtils;
 import com.mod.loan.util.huijuutil.HttpClientUtil;
 import com.mod.loan.util.huijuutil.Md5_Sign;
 import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
 import org.dom4j.Document;
 import org.dom4j.DocumentHelper;
 import org.joda.time.DateTime;
@@ -75,6 +67,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     private RabbitTemplate rabbitTemplate;
     @Autowired
     private YeepayService yeepayService;
+	@Autowired
+    private OkHttpReader okHttpReader;
 
     @Override
     public void helibaoPay(OrderPayMessage payMessage) {
@@ -200,23 +194,16 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
 
             String macSource = merchant.getFuyou_merid() + "|" + merchant.getFuyou_secureid() + "|" + fuiou_reqtype + "|" + xml;
             String mac = MD5.toMD5(macSource, "UTF-8").toUpperCase();
-            List<NameValuePair> params = new ArrayList<NameValuePair>();
-            params.add(new BasicNameValuePair("merid", merchant.getFuyou_merid()));
-            params.add(new BasicNameValuePair("reqtype", fuiou_reqtype));
-            params.add(new BasicNameValuePair("xml", xml));
-            params.add(new BasicNameValuePair("mac", mac));
-            CloseableHttpClient httpclient = HttpClientBuilder.create().build();
-
-            HttpPost httppost = new HttpPost(fuiou_requrl);
-            httppost.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
-            CloseableHttpResponse response = httpclient.execute(httppost);
-            HttpEntity entity = response.getEntity();
-            jsonStr = EntityUtils.toString(entity, "UTF-8");
-            httppost.releaseConnection();
-            Document document = DocumentHelper.parseText(jsonStr);
-            String result = document.selectSingleNode("/payforrsp/ret").getStringValue();
-            String msg = document.selectSingleNode("/payforrsp/memo").getStringValue();
-
+            // 切为okhttp3
+            Map<String, Object> params = new HashMap<>();
+            params.put("merid", merchant.getFuyou_merid());
+            params.put("reqtype", fuiou_reqtype);
+            params.put("xml", xml);
+            params.put("mac", mac);
+            String xmlResult = okHttpReader.postForm(fuiou_requrl, params, null);
+            logger.info("fuyouPay付款请求提交: xmlResult={}, message={}", xmlResult, payMessage);
+            //
+            // 只要有付款请求 一定要有记录
             OrderPay orderPay = new OrderPay();
             orderPay.setPayNo(serials_no);
             orderPay.setUid(order.getUid());
@@ -226,28 +213,45 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             orderPay.setBank(userBank.getCardName());
             orderPay.setBankNo(userBank.getCardNo());
             orderPay.setCreateTime(new Date());
+            //
+            if (!"".equals(xmlResult)) {
+                Document document = DocumentHelper.parseText(xmlResult);
+                String result = document.selectSingleNode("/payforrsp/ret").getStringValue();
+                String msg = document.selectSingleNode("/payforrsp/memo").getStringValue();
 
-            if ("000000".equals(result)) {
-                orderPay.setUpdateTime(new Date());
-                orderPay.setPayStatus(1);// 受理成功,插入打款流水，不改变订单状态
-                orderService.updatePayInfo(null, orderPay);
-                // 受理成功，将消息存入死信队列
-                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
-                        new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
+                // 正常返回
+                if ("000000".equals(result) || "AAAAAA".equals(result)) {
+                    orderPay.setUpdateTime(new Date());
+                    orderPay.setPayStatus(1);// 受理成功,插入打款流水，不改变订单状态
+                    orderService.updatePayInfo(null, orderPay);
+                    // 受理成功，将查询付款状态消息存入死信队列
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
+                            new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
+                } else {
+                    // 返回结果异常
+                    logger.error("富友放款受理失败,message={}, result={}, msg={}", JSON.toJSONString(payMessage), result, msg);
+                    orderPay.setRemark(msg);
+                    orderPay.setUpdateTime(new Date());
+                    orderPay.setPayStatus(2);
+                    Order record = new Order();
+                    record.setId(order.getId());
+                    record.setStatus(23);
+                    orderService.updatePayInfo(record, orderPay);
+                }
             } else {
-                logger.error("富友放款受理失败,message={}, result={}, msg={}", JSON.toJSONString(payMessage), result, msg);
-                orderPay.setRemark(msg);
+                // okhttp请求失败 要核查 可能付款请求已经发送成功 没有接收到响应
+                logger.error("富友放款请求失败,message={}", JSON.toJSONString(payMessage));
+                orderPay.setRemark("请求失败");
                 orderPay.setUpdateTime(new Date());
                 orderPay.setPayStatus(2);
-                Order record = new Order();
-                record.setId(order.getId());
-                record.setStatus(23);
-                orderService.updatePayInfo(record, orderPay);
-                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
+                orderService.updatePayInfo(null, orderPay);
             }
         } catch (Exception e) {
-            logger.error("富友订单放款异常， message={}，jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
-            logger.error("富友订单放款异常, error={}", e);
+            logger.error("富友订单放款异常, message={}, jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
+            logger.error("富友订单放款异常, error={}", e.getMessage());
+        } finally {
+            // 释放锁
+            redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
     }
 
@@ -471,70 +475,72 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             String xml = XmlUtils.convertToXml(fuYouPayQueryBean, "utf-8");
             String macSource = merchant.getFuyou_merid() + "|" + merchant.getFuyou_secureid() + "|" + xml;
             String mac = MD5.toMD5(macSource, "UTF-8").toUpperCase();
-            List<NameValuePair> params = new ArrayList<NameValuePair>();
-            params.add(new BasicNameValuePair("merid", merchant.getFuyou_merid()));
-            params.add(new BasicNameValuePair("xml", xml));
-            params.add(new BasicNameValuePair("mac", mac));
-            CloseableHttpClient httpclient = HttpClientBuilder.create().build();
+			//
+            Map<String, Object> params = new HashMap<>();
+            params.put("merid", merchant.getFuyou_merid());
+            params.put("xml", xml);
+            params.put("mac", mac);
+            //
+            String xmlResult = okHttpReader.postForm(fuiou_requrl_query, params, null);
+            logger.info("fuyouPayQuery付款状态查询请求提交: xmlResult={}, message={}", xmlResult, payResultMessage);
+            //
+            if (!"".equals(xmlResult)) {
+                Document document = DocumentHelper.parseText(xmlResult);
+                String result = document.selectSingleNode("/qrytransrsp/ret").getStringValue();
+                String msg = document.selectSingleNode("/qrytransrsp/memo").getStringValue();
+                //
+                if ("000000".equals(result)) {
+                    String state = document.selectSingleNode("/qrytransrsp/trans/state").getStringValue();
+                    String tpst = document.selectSingleNode("/qrytransrsp/trans/tpst").getStringValue();
+                    String rspcd = document.selectSingleNode("/qrytransrsp/trans/rspcd").getStringValue();
+                    String transStatusDesc = document.selectSingleNode("/qrytransrsp/trans/transStatusDesc")
+                            .getStringValue();
+                    String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
 
-            HttpPost httppost = new HttpPost(fuiou_requrl_query);
-            httppost.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
-            CloseableHttpResponse response = httpclient.execute(httppost);
-            HttpEntity entity = response.getEntity();
-            String jsonStr = EntityUtils.toString(entity, "UTF-8");
-            httppost.releaseConnection();
-            Document document = DocumentHelper.parseText(jsonStr);
-            String result = document.selectSingleNode("/qrytransrsp/ret").getStringValue();
-            String msg = document.selectSingleNode("/qrytransrsp/memo").getStringValue();
-
-            if ("000000".equals(result)) {
-                String state = document.selectSingleNode("/qrytransrsp/trans/state").getStringValue();
-                String tpst = document.selectSingleNode("/qrytransrsp/trans/tpst").getStringValue();
-                String rspcd = document.selectSingleNode("/qrytransrsp/trans/rspcd").getStringValue();
-                String transStatusDesc = document.selectSingleNode("/qrytransrsp/trans/transStatusDesc")
-                        .getStringValue();
-                String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
-
-                // 交易未发送与交易发送中
-                if ("0".equals(state) || "3".equals(state)) {
-                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                    if (payResultMessage.getTimes() < 6) {
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                    } else {
-                        logger.info("查询订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
-                                JSON.toJSONString(payResultMessage), result, msg, resultMsg);
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                    // 交易未发送与交易发送中
+                    if ("0".equals(state) || "3".equals(state)) {
+                        payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                        if (payResultMessage.getTimes() < 6) {
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                        } else {
+                            logger.info("查询订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                        }
                     }
-                }
 
-                if ("1".equals(state) && "0".equals(tpst) && "000000".equals(rspcd)
-                        && "success".equals(transStatusDesc)) {
-                    paySuccess(payNo);// 交易成功
-                } else if ("1".equals(state) && "1".equals(tpst)) {
-                    payFail(payNo, transStatusDesc); // 交易失败
-                } else if ("1".equals(state) && "0".equals(tpst)
-                        && ("000000".equals(rspcd) || "200001".equals(rspcd) || "200002".equals(rspcd)
-                        || "999999".equals(rspcd) || "AAAAAA".equals(rspcd) || "null".equals(rspcd)
-                        || StringUtils.isBlank(rspcd))) { // 继续查询
-                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                    if (payResultMessage.getTimes() < 6) {
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                    } else {
-                        logger.info("查询订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
-                                JSON.toJSONString(payResultMessage), result, msg, resultMsg);
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                    if ("1".equals(state) && "0".equals(tpst) && "000000".equals(rspcd)
+                            && "success".equals(transStatusDesc)) {
+                        paySuccess(payNo);// 交易成功
+                    } else if ("1".equals(state) && "1".equals(tpst)) {
+                        payFail(payNo, transStatusDesc); // 交易失败
+                    } else if ("1".equals(state) && "0".equals(tpst)
+                            && ("000000".equals(rspcd) || "200001".equals(rspcd) || "200002".equals(rspcd)
+                            || "999999".equals(rspcd) || "AAAAAA".equals(rspcd) || "null".equals(rspcd)
+                            || StringUtils.isBlank(rspcd))) { // 继续查询
+                        payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                        if (payResultMessage.getTimes() < 6) {
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                        } else {
+                            logger.info("查询订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                        }
+                    } else if ("1".equals(state) && "0".equals(tpst)) {
+                        payFail(payNo, transStatusDesc); // 交易失败
                     }
-                } else if ("1".equals(state) && "0".equals(tpst)) {
-                    payFail(payNo, transStatusDesc); // 交易失败
+                } else {
+                    logger.info("富友查询代付结果失败,payNo={},富友返回结果={},msg={}", payNo, result, msg);
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
                 }
             } else {
-                logger.info("查询代付结果失败,payNo={},富友返回结果={},msg={}", payNo, result, msg);
+                logger.error("富友查询代付请求失败,payNo={}", payNo);
                 rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
             }
         } catch (Exception e) {
             logger.error("富友查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("富友查询代付结果异常, error={}", e);
-            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payResultMessage);
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
 
