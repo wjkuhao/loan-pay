@@ -500,29 +500,13 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                             .getStringValue();
                     String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
 					//
-                    // 交易未发送
-                    if ("0".equals(state)) {// 交易未发送 查5次(短)+1次(长)
-                        payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                        if (payResultMessage.getTimes() < 5) {
-                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                        } else if (payResultMessage.getTimes() == 5) {
-                            logger.info("查询富友代付订单,交易未发送,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
-                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
-                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
-                        } else {
-                            // 更新未打款失败
-                            logger.error("查询富友代付订单6次,交易未发送,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
-                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
-                            paySendFail(payNo, transStatusDesc);
-                        }
-                    }
-                    // 交易发送中
-                    if ("3".equals(state)) {
+                    // 交易未发送 或者 交易发送中
+                    if ("0".equals(state) || "3".equals(state)) {// 一直查询
                         payResultMessage.setTimes(payResultMessage.getTimes() + 1);
                         if (payResultMessage.getTimes() < 6) {
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
                         } else {
-                            logger.info("查询富友代付订单,交易发送中,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                            logger.info("查询富友代付订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
                                     JSON.toJSONString(payResultMessage), result, msg, resultMsg);
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
                         }
@@ -549,6 +533,18 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                         }
                     } else if ("1".equals(state) && "0".equals(tpst)) {
                         payFail(payNo, transStatusDesc); // 交易失败
+                    }
+                } else if ("200029".equals(result)) {// 查询返回码，未找到交易(查无此单)
+                    // 为了确保再查一次是不是查不到
+                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                    if (payResultMessage.getTimes() < 2) {// 多查一次富有
+                        logger.info("查询富友代付订单,查无此单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                JSON.toJSONString(payResultMessage), result, msg, "查无此单");
+                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                    } else {// 还是找不到 说明没有提交成功
+						logger.error("查询富友代付订单,查无此单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                JSON.toJSONString(payResultMessage), result, msg, "查无此单");
+                        paySendFail(payNo, "查无此单");
                     }
                 } else {
                     logger.info("富友查询代付结果失败,payNo={},富友返回结果={},msg={}", payNo, result, msg);
