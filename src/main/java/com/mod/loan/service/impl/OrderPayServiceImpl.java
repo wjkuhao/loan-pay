@@ -245,6 +245,9 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 orderPay.setUpdateTime(new Date());
                 orderPay.setPayStatus(2);
                 orderService.updatePayInfo(null, orderPay);
+				// 请求失败 等待后续查询接过来最终确定 打款是否成功
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
+                        new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
             }
         } catch (Exception e) {
             logger.error("富友订单放款异常, message={}, jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
@@ -498,11 +501,11 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
 					//
                     // 交易未发送
-                    if ("0".equals(state)) {// 6次都没查到 进入打款失败
+                    if ("0".equals(state)) {// 交易未发送 查5次(短)+1次(长)
                         payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                        if (payResultMessage.getTimes() < 6) {
+                        if (payResultMessage.getTimes() < 5) {
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                        } else if (payResultMessage.getTimes() == 6) {
+                        } else if (payResultMessage.getTimes() == 5) {
                             logger.info("查询富友代付订单,交易未发送,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
                                     JSON.toJSONString(payResultMessage), result, msg, resultMsg);
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
