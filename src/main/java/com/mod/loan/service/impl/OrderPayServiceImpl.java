@@ -496,21 +496,39 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     String transStatusDesc = document.selectSingleNode("/qrytransrsp/trans/transStatusDesc")
                             .getStringValue();
                     String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
-
-                    // 交易未发送与交易发送中
-                    if ("0".equals(state) || "3".equals(state)) {
+					//
+                    // 交易未发送
+                    if ("0".equals(state)) {// 6次都没查到 进入打款失败
+                        payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                        if (payResultMessage.getTimes() < 6) {
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                        } else if (payResultMessage.getTimes() == 6) {
+                            logger.info("查询富友代付订单,交易未发送,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
+                            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                        } else {
+                            // 更新未打款失败
+                            logger.error("查询富友代付订单6次,交易未发送,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                                    JSON.toJSONString(payResultMessage), result, msg, resultMsg);
+                            paySendFail(payNo, transStatusDesc);
+                        }
+                    }
+                    // 交易发送中
+                    if ("3".equals(state)) {
                         payResultMessage.setTimes(payResultMessage.getTimes() + 1);
                         if (payResultMessage.getTimes() < 6) {
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
                         } else {
-                            logger.info("查询订单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                            logger.info("查询富友代付订单,交易发送中,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
                                     JSON.toJSONString(payResultMessage), result, msg, resultMsg);
                             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
                         }
                     }
-
-                    if ("1".equals(state) && "0".equals(tpst) && "000000".equals(rspcd)
-                            && "success".equals(transStatusDesc)) {
+                    //
+                    if ("1".equals(state) // 交易已发送且成功
+                            && "0".equals(tpst) // 1.是 0.否（仅 AP01 有）
+                            && "000000".equals(rspcd) //
+                            && ("success".equals(transStatusDesc) || "chanAcceptSuccess".equals(transStatusDesc))) {
                         paySuccess(payNo);// 交易成功
                     } else if ("1".equals(state) && "1".equals(tpst)) {
                         payFail(payNo, transStatusDesc); // 交易失败
@@ -783,6 +801,31 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         }
     }
 
+	/**
+     * 代付请求失败
+     *
+     * @param payNo    打款单号
+     * @param errorMsg 错误信息
+     */
+    private void paySendFail(String payNo, String errorMsg) {
+        OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
+        if (orderPay.getPayStatus() == 2) {// 只处理受理失败的状态
+            Order order1 = new Order();
+            order1.setId(orderPay.getOrderId());
+            order1.setStatus(23);
+
+            OrderPay orderPay1 = new OrderPay();
+            orderPay1.setPayNo(payNo);
+            orderPay1.setPayStatus(2);
+            orderPay1.setRemark(errorMsg);
+            orderPay1.setUpdateTime(new Date());
+            orderService.updatePayCallbackInfo(order1, orderPay1);
+            redisMapper.unlock(RedisConst.ORDER_LOCK + orderPay.getOrderId());
+        } else {
+            logger.error("查询代付结果异常,payNo={}", payNo);
+        }
+    }
+	
     /**
      * 打款失败短信验证码发送
      */
