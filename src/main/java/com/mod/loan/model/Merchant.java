@@ -101,6 +101,10 @@ public class Merchant {
     @Column(name = "yeepay_loan_private_key")
     private String yeepay_loan_private_key;
 
+    @Column(name = "kq_merchant_code")
+    private String kqMerchantCode;
+
+
     public String getYeepay_loan_appkey() {
         return yeepay_loan_appkey;
     }
@@ -344,5 +348,13 @@ public class Merchant {
 
     public void setBindType(Integer bindType) {
         this.bindType = bindType;
+    }
+
+    public String getKqMerchantCode() {
+        return kqMerchantCode;
+    }
+
+    public void setKqMerchantCode(String kqMerchantCode) {
+        this.kqMerchantCode = kqMerchantCode;
     }
 }

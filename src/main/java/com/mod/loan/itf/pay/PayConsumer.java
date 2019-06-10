@@ -1,5 +1,6 @@
 package com.mod.loan.itf.pay;
 
+import com.mod.loan.service.KuaiqianService;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +31,8 @@ public class PayConsumer {
 	@Autowired
 	private OrderPayService orderPayService;
 	@Autowired
+	private KuaiqianService kuaiqianService;
+	@Autowired
 	private RedisMapper redisMapper;
 
 	@RabbitListener(queues = "queue_order_pay", containerFactory = "order_pay")
@@ -57,6 +60,9 @@ public class PayConsumer {
 			break;
 		case "yeepay":
 			orderPayService.yeePay(payMessage);
+			break;
+		case "kuaiqian":
+			kuaiqianService.kuaiqianPay(payMessage);
 			break;
 		default:
 			logger.error("放款消息payType异常,payMessage={}", payMessage);
