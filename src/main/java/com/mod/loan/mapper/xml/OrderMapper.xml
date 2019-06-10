@@ -30,4 +30,7 @@
 		<result column="follow_user_id" jdbcType="BIGINT" property="followUserId" />
 	</resultMap>
 
+	<select id="countOrderPaySuccessOneDay" resultType="int">
+		select count(0) from tb_order where uid = #{uid} and repay_time = date_format(now(),'%Y-%m-%d')
+	</select>
 </mapper>
