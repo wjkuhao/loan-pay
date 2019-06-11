@@ -1,5 +1,6 @@
 package com.mod.loan.util.kuaiqianutil.common;
 
+import com.alibaba.fastjson.JSONObject;
 import com.bill99.asap.exception.CryptoException;
 import com.bill99.asap.service.ICryptoService;
 import com.bill99.asap.service.impl.CryptoServiceFactory;
@@ -36,6 +37,22 @@ public class KuaiqianHttpUtil {
     //字符编码
     private static String encoding = "UTF-8";
 
+    public static void main(String[] args) {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                "<pay2BankOrder>\n" +
+                "<orderId>p20190611112204210037</orderId>\n" +
+                "<bankName>招商银行</bankName>\n" +
+                "<branchName></branchName>\n" +
+                "<creditName>聂林</creditName>\n" +
+                "<mobile></mobile>\n" +
+                "<bankAcctId>6214835892387117</bankAcctId>\n" +
+                "<amount>14</amount>\n" +
+                "<province></province>\n" +
+                "<city></city>\n" +
+                "<remark></remark>\n" +
+                "<feeAction>1</feeAction>";
+        genPayPKIMsg(xml, "10210634120");
+    }
     /**
      * 明文加密加签
      *
@@ -53,8 +70,9 @@ public class KuaiqianHttpUtil {
             ICryptoService service = CryptoServiceFactory.createCryptoService();
             sealedData = service.seal(mpf, originalStr.getBytes());
         } catch (CryptoException e) {
-            System.out.println(e);
+            logger.error("快钱明文加密加签异常，e={}", e);
         }
+        logger.info("快钱明文加密数据，sealedData={}", JSONObject.toJSON(sealedData));
         Pay2bankRequest request = CCSUtil.genPayRequest(memberCode, VERSION);
         byte[] nullbyte = {};
         byte[] byteOri = sealedData.getOriginalData() == null ? nullbyte : sealedData.getOriginalData();
@@ -89,6 +107,7 @@ public class KuaiqianHttpUtil {
             System.out.println(e);
         }
         Pay2bankSearchRequest request = CCSUtil.genPayQueryRequest(memberCode, VERSION);
+
         byte[] nullbyte = {};
         byte[] byteOri = sealedData.getOriginalData() == null ? nullbyte : sealedData.getOriginalData();
         byte[] byteEnc = sealedData.getEncryptedData() == null ? nullbyte : sealedData.getEncryptedData();
