@@ -33,7 +33,10 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> implements OrderPayService {
@@ -68,16 +71,12 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     @Autowired
     private RabbitTemplate rabbitTemplate;
     @Autowired
-    private HelipayEntrustedPayService helipayEntrustedPayService;
-    @Autowired
     private YeepayService yeepayService;
-	@Autowired
+    @Autowired
     private OkHttpReader okHttpReader;
+    @Autowired
+    private HelipayEntrustedPayService helipayEntrustedPayService;
 
-
-    /**
-     * 合利宝支付分流
-     */
     @Override
     public void helibaoPay(OrderPayMessage payMessage) {
         try {
@@ -87,26 +86,22 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 return;
             }
 
-            if (!checkPayCondition(order)){
+            if (!checkPayCondition(order)) {
                 return;
             }
 
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
-        Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
-        if (order.getStatus() != 22) { // 放款中的订单才能放款
-            logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
-            return;
-        }
-        Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
-        UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
-        User user = userService.selectByPrimaryKey(order.getUid());
-        //合利宝委托代付配置不为空
-        if (StringUtils.isNotEmpty(merchant.getHlbEntrustedPrivateKey()) && StringUtils.isNotEmpty(merchant.getHlbEntrustedSignKey())) {
-            helibaoEntrustedPay(order, merchant, userBank, user, payMessage);
-        } else {
-            helibaoPay(order, merchant, userBank, user, payMessage);
+            //合利宝委托代付配置不为空
+            if (StringUtils.isNotEmpty(merchant.getHlbEntrustedPrivateKey()) && StringUtils.isNotEmpty(merchant.getHlbEntrustedSignKey())) {
+                helibaoEntrustedPay(order, merchant, userBank, user, payMessage);
+            } else {
+                helibaoPay(order, merchant, userBank, user, payMessage);
+            }
+        } catch (Exception e) {
+            logger.error("合利宝订单放款异常, message={}", JSON.toJSONString(payMessage));
+            logger.error("合利宝订单放款异常, error={}", e);
         }
     }
 
@@ -180,7 +175,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("合利宝订单放款异常, message={}", JSON.toJSONString(payMessage));
-            logger.error("合利宝订单放款异常, error={}", e);
+            logger.error("合利宝订单放款异常", e);
         } finally {
             // 释放锁
             redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
@@ -245,8 +240,12 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("合利宝委托代付订单放款异常, message={}", JSON.toJSONString(payMessage));
             logger.error("合利宝委托代付订单放款异常", e);
+        } finally {
+            // 释放锁
+            redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
     }
+
 
     @Override
     public void fuyouPay(OrderPayMessage payMessage) {
@@ -258,7 +257,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 return;
             }
 
-            if (!checkPayCondition(order)){
+            if (!checkPayCondition(order)) {
                 return;
             }
 
@@ -337,7 +336,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 orderPay.setUpdateTime(new Date());
                 orderPay.setPayStatus(2);
                 orderService.updatePayInfo(null, orderPay);
-				// 请求失败 等待后续查询接过来最终确定 打款是否成功
+                // 请求失败 等待后续查询接过来最终确定 打款是否成功
                 rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
                         new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
             }
@@ -358,7 +357,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
                 return;
             }
-            if (!checkPayCondition(order)){
+            if (!checkPayCondition(order)) {
                 return;
             }
 
@@ -445,10 +444,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 对单笔代付响应信息的处理
      *
-     * @param httpResponseJson
-     *            响应信息json字符串
-     * @param key
-     *            商户秘钥
+     * @param httpResponseJson 响应信息json字符串
+     * @param key              商户秘钥
      */
     @SuppressWarnings("unchecked")
     private boolean doResponseInfo(String httpResponseJson, String key) {
@@ -473,8 +470,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 获取请求数据签名串信息 必须按新代付接口文档请求参数信息顺序来进行字符串的拼接，详情请参考新代付接口文档请求报文
      *
-     * @param params
-     *            请求数据参数
+     * @param params 请求数据参数
      * @return 返回请求签名串
      */
     private String getRequestSign(Map<String, Object> params) {
@@ -497,8 +493,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     /**
      * 获取响应数据签名串信息 必须按新代付接口文档应答参数信息顺序来进行字符串的拼接，详情请参考新代付接口文档的应答报文
      *
-     * @param params
-     *            响应数据参数
+     * @param params 响应数据参数
      * @return 返回响应签名串
      */
     private String getResponseSign(Map<String, Object> params) {
@@ -526,7 +521,6 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     public void helipayQuery(OrderPayQueryMessage payResultMessage, Merchant merchant) {
         try {
             String payNo = payResultMessage.getPayNo();
-            Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
             LinkedHashMap<String, String> sPara = new LinkedHashMap<String, String>();
             sPara.put("P1_bizType", "TransferQuery");
             sPara.put("P2_orderId", payNo);
@@ -566,7 +560,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("合利宝查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("合利宝查询代付结果异常, error={}", e);
+            logger.error("合利宝查询代付结果异常", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
@@ -630,7 +624,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             String xml = XmlUtils.convertToXml(fuYouPayQueryBean, "utf-8");
             String macSource = merchant.getFuyou_merid() + "|" + merchant.getFuyou_secureid() + "|" + xml;
             String mac = MD5.toMD5(macSource, "UTF-8").toUpperCase();
-			//
+            //
             Map<String, Object> params = new HashMap<>();
             params.put("merid", merchant.getFuyou_merid());
             params.put("xml", xml);
@@ -651,7 +645,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     String transStatusDesc = document.selectSingleNode("/qrytransrsp/trans/transStatusDesc")
                             .getStringValue();
                     String resultMsg = document.selectSingleNode("/qrytransrsp/trans/result").getStringValue();
-					//
+                    //
                     // 交易未发送 或者 交易发送中
                     if ("0".equals(state) || "3".equals(state)) {// 一直查询
                         payResultMessage.setTimes(payResultMessage.getTimes() + 1);
@@ -694,7 +688,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                                 JSON.toJSONString(payResultMessage), result, msg, "查无此单");
                         rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
                     } else {// 还是找不到 说明没有提交成功
-						logger.error("查询富友代付订单,查无此单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
+                        logger.error("查询富友代付订单,查无此单,payResultMessage={},富友返回结果={},msg={},resultMsg={}",
                                 JSON.toJSONString(payResultMessage), result, msg, "查无此单");
                         paySendFail(payNo, "查无此单");
                     }
@@ -781,7 +775,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 return;
             }
 
-            if (!checkPayCondition(order)){
+            if (!checkPayCondition(order)) {
                 return;
             }
 
@@ -801,7 +795,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
 
             String batchNo = TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6);
-            String serials_no = "p"+ batchNo;
+            String serials_no = "p" + batchNo;
 
             String errMsg = yeepayService.payToCustom(DesUtil.decryption(merchant.getYeepay_group_no()),
                     DesUtil.decryption(merchant.getYeepay_loan_appkey()), DesUtil.decryption(merchant.getYeepay_loan_private_key()),
@@ -826,7 +820,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
                         new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
             } else {
-                if ("商户可用打款余额不足".equals(errMsg)){
+                if ("商户可用打款余额不足".equals(errMsg)) {
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "13979127403", String.valueOf(orderPay.getPayMoney())));
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "13575506440", String.valueOf(orderPay.getPayMoney())));
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "15757127746", String.valueOf(orderPay.getPayMoney())));
@@ -861,8 +855,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     DesUtil.decryption(merchant.getYeepay_loan_private_key()), batchNo);
 
             logger.info("查询订单,payResultMessage={},易宝返回结果={}", JSON.toJSONString(payResultMessage), errMsg);
-            if (errMsg!=null) {
-                if (errMsg.equals("processing")){
+            if (errMsg != null) {
+                if (errMsg.equals("processing")) {
                     payResultMessage.setTimes(payResultMessage.getTimes() + 1);
                     if (payResultMessage.getTimes() < 3) {
                         rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
@@ -870,10 +864,10 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                         logger.info("查询订单,payResultMessage={},易宝返回结果={}", JSON.toJSONString(payResultMessage), errMsg);
                         rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
                     }
-                }else {
+                } else {
                     payFail(payNo, errMsg);
                 }
-            }else {
+            } else {
                 paySuccess(payNo);
             }
         } catch (Exception e) {
@@ -885,18 +879,18 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
 
     @Override
     public boolean checkPayCondition(Order order) {
-        if (order.getBorrowMoney().compareTo(new BigDecimal(5000))>=0) {
+        if (order.getBorrowMoney().compareTo(new BigDecimal(5000)) >= 0) {
             order.setStatus(23);
-            logger.error("代付检查异常:orderid={},放款金额={}",order.getId(), order.getBorrowMoney());
+            logger.error("代付检查异常:orderid={},放款金额={}", order.getId(), order.getBorrowMoney());
             sendSmsMessage(order.getMerchant(), "代付检查异常:放款金额大于5000");
             orderService.updateByPrimaryKeySelective(order);
             return false;
         }
 
         int count = orderService.countOrderPaySuccessOneDay(order.getUid());
-        if (count>1){
+        if (count > 1) {
             order.setStatus(23);
-            logger.error("代付检查异常:orderid={},一天重复放款={}",order.getId(), order.getBorrowMoney());
+            logger.error("代付检查异常:orderid={},一天重复放款={}", order.getId(), order.getBorrowMoney());
             sendSmsMessage(order.getMerchant(), "代付检查异常:一天重复放款");
             orderService.updateByPrimaryKeySelective(order);
             return false;
@@ -952,7 +946,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         }
     }
 
-	/**
+    /**
      * 代付请求失败
      *
      * @param payNo    打款单号
