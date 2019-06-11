@@ -1,5 +1,6 @@
 package com.mod.loan.itf.pay;
 
+import com.mod.loan.service.KuaiqianService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
@@ -23,6 +24,8 @@ public class PayQueryConsumer {
 
 	@Autowired
 	private OrderPayService orderPayService;
+	@Autowired
+	private KuaiqianService kuaiqianService;
 
 	@RabbitListener(queues = "queue_order_pay_query", containerFactory = "order_pay_query")
 	@RabbitHandler
@@ -38,6 +41,12 @@ public class PayQueryConsumer {
 			break;
 		case 3:
 			orderPayService.huijuPayQuery(payResultMessage);
+			break;
+		case 4:
+			orderPayService.yeePayQuery(payResultMessage);
+			break;
+		case 6:
+			kuaiqianService.kuaiqianPayQuery(payResultMessage);
 			break;
 		default:
 			logger.error("放款查询消息payType异常,payResultMessage={}", payResultMessage);
