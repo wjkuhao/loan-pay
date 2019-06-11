@@ -130,10 +130,6 @@ public class Merchant {
 	@Column(name = "hlb_entrusted_private_key")
 	private String hlbEntrustedPrivateKey;
 
-	public Integer getBindType() {
-		return bindType;
-	}
-
     public void setYeepay_group_no(String yeepay_group_no) {
         this.yeepay_group_no = yeepay_group_no;
     }
