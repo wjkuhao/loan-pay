@@ -45,7 +45,7 @@ public class PayQueryConsumer {
 		case 4:
 			orderPayService.yeePayQuery(payResultMessage);
 			break;
-		case 5:
+		case 6:
 			kuaiqianService.kuaiqianPayQuery(payResultMessage);
 			break;
 		default:

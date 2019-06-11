@@ -153,6 +153,9 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("合利宝订单放款异常, message={}", JSON.toJSONString(payMessage));
             logger.error("合利宝订单放款异常, error={}", e);
+        } finally {
+            // 释放锁
+            redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
     }
 
@@ -340,11 +343,13 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 record.setId(order.getId());
                 record.setStatus(23);
                 orderService.updatePayInfo(record, orderPay);
-                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
             }
         } catch (Exception e) {
             logger.error("汇聚订单放款异常, message={}", JSON.toJSONString(payMessage));
             logger.error("汇聚订单放款异常, error={}", e);
+        } finally {
+            // 释放锁
+            redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
     }
 

@@ -113,6 +113,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 // 受理成功,插入打款流水，不改变订单状态
                 orderPay.setPayStatus(1);
                 orderService.updatePayInfo(null, orderPay);
+                logger.info("快钱放款受理成功");
                 // 受理成功，将消息存入死信队列
                 rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
                         new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
@@ -125,7 +126,6 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 record.setId(order.getId());
                 record.setStatus(23);
                 orderService.updatePayInfo(record, orderPay);
-                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
 
                 //快钱商户给用户放款失败,发送短信提醒
                 if ("6001".equals(pay2bankResult.getResponseBody().getErrorCode())) {
@@ -135,6 +135,9 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("快钱订单放款异常， message={}，jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
             logger.error("快钱订单放款异常", e);
+        } finally {
+            // 释放锁
+            redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
     }
 
@@ -167,9 +170,11 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 String state = pay2bankResult.getResultList().get(0).getStatus();
                 // 交易成功
                 if ("111".equals(state)) {
+                    logger.info("快钱放款成功");
                     paySuccess(payNo);
                     // 交易失败
                 } else if ("112".equals(state)) {
+                    logger.error("快钱放款失败,payResultMessage={},快钱返回结果={}", JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult));
                     payFail(payNo, msg);
                 } else { // 继续查询
                     payResultMessage.setTimes(payResultMessage.getTimes() + 1);
