@@ -63,6 +63,9 @@ public class UserBank {
     @Column(name = "remark")
     private String remark;
 
+    @Column(name = "hlb_entrusted_cuid")
+    private String hlbEntrustedCuid;
+
     /**
      * @return id
      */
@@ -242,6 +245,12 @@ public class UserBank {
 	public void setRemark(String remark) {
 		this.remark = remark;
 	}
-    
-    
+
+    public String getHlbEntrustedCuid() {
+        return hlbEntrustedCuid;
+    }
+
+    public void setHlbEntrustedCuid(String hlbEntrustedCuid) {
+        this.hlbEntrustedCuid = hlbEntrustedCuid;
+    }
 }

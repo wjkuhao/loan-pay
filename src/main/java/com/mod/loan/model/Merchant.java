@@ -83,6 +83,12 @@ public class Merchant {
 	@Column(name = "bind_type")
 	private Integer bindType;
 
+	@Column(name = "hlb_entrusted_sign_key")
+	private String hlbEntrustedSignKey;
+
+	@Column(name = "hlb_entrusted_private_key")
+	private String hlbEntrustedPrivateKey;
+
 	public Integer getBindType() {
 		return bindType;
 	}
@@ -285,4 +291,19 @@ public class Merchant {
 		this.huiju_md5_key = huiju_md5_key;
 	}
 
+	public String getHlbEntrustedSignKey() {
+		return hlbEntrustedSignKey;
+	}
+
+	public void setHlbEntrustedSignKey(String hlbEntrustedSignKey) {
+		this.hlbEntrustedSignKey = hlbEntrustedSignKey;
+	}
+
+	public String getHlbEntrustedPrivateKey() {
+		return hlbEntrustedPrivateKey;
+	}
+
+	public void setHlbEntrustedPrivateKey(String hlbEntrustedPrivateKey) {
+		this.hlbEntrustedPrivateKey = hlbEntrustedPrivateKey;
+	}
 }

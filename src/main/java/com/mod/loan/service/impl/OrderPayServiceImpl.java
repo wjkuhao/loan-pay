@@ -17,6 +17,8 @@ import com.mod.loan.util.MD5;
 import com.mod.loan.util.TimeUtils;
 import com.mod.loan.util.XmlUtils;
 import com.mod.loan.util.heliutil.HeliPayUtils;
+import com.mod.loan.util.heliutil.vo.OrderQueryResVo;
+import com.mod.loan.util.heliutil.vo.OrderResVo;
 import com.mod.loan.util.huijuutil.HttpClientUtil;
 import com.mod.loan.util.huijuutil.Md5_Sign;
 import org.apache.commons.lang.StringUtils;
@@ -75,19 +77,36 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     private RedisMapper redisMapper;
     @Autowired
     private RabbitTemplate rabbitTemplate;
+    @Autowired
+    private HelipayEntrustedPayService helipayEntrustedPayService;
 
+
+    /**
+     * 合利宝支付分流
+     */
     @Override
     public void helibaoPay(OrderPayMessage payMessage) {
-        try {
-            Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
-            if (order.getStatus() != 22) { // 放款中的订单才能放款
-                logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
-                return;
-            }
-            Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
-            UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
-            User user = userService.selectByPrimaryKey(order.getUid());
+        Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
+        if (order.getStatus() != 22) { // 放款中的订单才能放款
+            logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
+            return;
+        }
+        Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
+        UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
+        User user = userService.selectByPrimaryKey(order.getUid());
+        //合利宝委托代付配置不为空
+        if (StringUtils.isNotEmpty(merchant.getHlbEntrustedPrivateKey()) && StringUtils.isNotEmpty(merchant.getHlbEntrustedSignKey())) {
+            helibaoEntrustedPay(order, merchant, userBank, user, payMessage);
+        } else {
+            helibaoPay(order, merchant, userBank, user, payMessage);
+        }
+    }
 
+    /**
+     * 合利宝代付放款
+     */
+    public void helibaoPay(Order order, Merchant merchant, UserBank userBank, User user, OrderPayMessage payMessage) {
+        try {
             String serials_no = String.format("%s%s%s", "p", new DateTime().toString(TimeUtils.dateformat5),
                     user.getId());
             String amount = order.getActualMoney().toString();
@@ -154,6 +173,67 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("合利宝订单放款异常, message={}", JSON.toJSONString(payMessage));
             logger.error("合利宝订单放款异常", e);
+        }
+    }
+
+    /**
+     * 合利宝委托代付放款
+     */
+    public void helibaoEntrustedPay(Order order, Merchant merchant, UserBank userBank, User user, OrderPayMessage payMessage) {
+        try {
+            logger.info("helibaoEntrustedPay:{}", JSON.toJSONString(payMessage));
+            String payNo = String.format("%s%s%s", "p", new DateTime().toString(TimeUtils.dateformat5),
+                    user.getId());
+            String amount = order.getActualMoney().toString();
+            if ("dev".equals(Constant.ENVIROMENT)) {
+                amount = "1.1";
+            }
+            OrderPay orderPay = new OrderPay();
+            orderPay.setPayNo(payNo);
+            orderPay.setUid(order.getUid());
+            orderPay.setOrderId(order.getId());
+            orderPay.setPayMoney(new BigDecimal(amount));
+            orderPay.setBank(userBank.getCardName());
+            orderPay.setBankNo(userBank.getCardNo());
+            orderPay.setCreateTime(new Date());
+            OrderResVo resVo = null;
+            logger.info("hlbEntrustedCuid:{}", userBank.getHlbEntrustedCuid());
+            //用户已完成委托代付注册
+            if (StringUtils.isNotEmpty(userBank.getHlbEntrustedCuid())) {
+                resVo = helipayEntrustedPayService.bindUserCardPay(payNo, user, userBank, order, merchant);
+            } else {
+                resVo = helipayEntrustedPayService.entrustedPay(payNo, amount, user, userBank, merchant);
+            }
+            //判断是否成功
+            if ("0000".equals(resVo.getRt2_retCode())) {
+                orderPay.setUpdateTime(new Date());
+                orderPay.setPayStatus(1);// 受理成功,插入打款流水，不改变订单状态
+                orderPay.setRemark(resVo.getRt3_retMsg());
+                orderService.updatePayInfo(null, orderPay);
+                // 受理成功，将消息存入死信队列，5秒后去查询是否放款成功,这里如果是合利宝委托代付,把UID带过去吧
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
+                        new OrderPayQueryMessage(payNo, user.getId(), merchant.getMerchantAlias(), payMessage.getPayType()));
+            } else {
+                logger.error("合利宝委托放款受理失败,message={}, result={}", JSON.toJSONString(payMessage),
+                        JSON.toJSONString(resVo));
+                String msg = resVo.getRt3_retMsg();
+                orderPay.setRemark(msg);
+                orderPay.setUpdateTime(new Date());
+                orderPay.setPayStatus(2);
+                Order record = new Order();
+                record.setId(order.getId());
+                record.setStatus(23);
+                orderService.updatePayInfo(record, orderPay);
+                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
+
+                //合利宝商户给用户放款失败,发送短信提醒
+                if (msg.contains("账户余额不足")) {
+                    sendSmsMessage(merchant.getMerchantAlias(), msg);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("合利宝委托代付订单放款异常, message={}", JSON.toJSONString(payMessage));
+            logger.error("合利宝委托代付订单放款异常", e);
         }
     }
 
@@ -391,9 +471,22 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
 
     @Override
     public void helibaoPayQuery(OrderPayQueryMessage payResultMessage) {
+        Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
+        if (StringUtils.isNotEmpty(merchant.getHlbEntrustedSignKey()) && StringUtils.isNotEmpty(merchant.getHlbEntrustedPrivateKey())) {
+            //委托代付结果查询
+            helipayEntrustedQuery(payResultMessage, merchant);
+        } else {
+            //代付结果查询
+            helipayQuery(payResultMessage, merchant);
+        }
+    }
+
+    /**
+     * 合利宝代付结果查询
+     */
+    public void helipayQuery(OrderPayQueryMessage payResultMessage, Merchant merchant) {
         try {
             String payNo = payResultMessage.getPayNo();
-            Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
             LinkedHashMap<String, String> sPara = new LinkedHashMap<String, String>();
             sPara.put("P1_bizType", "TransferQuery");
             sPara.put("P2_orderId", payNo);
@@ -434,6 +527,50 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("合利宝查询代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("合利宝查询代付结果异常", e);
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+        }
+    }
+
+    /**
+     * 合利宝委托代付结果查询
+     */
+    public void helipayEntrustedQuery(OrderPayQueryMessage payResultMessage, Merchant merchant) {
+        try {
+            String payNo = payResultMessage.getPayNo();
+            UserBank userBank = userBankService.selectUserCurrentBankCard(payResultMessage.getUid());
+            OrderQueryResVo resVo = helipayEntrustedPayService.entrustedPayQuery(payResultMessage.getPayNo(), userBank, merchant);
+            if (!"0000".equals(resVo.getRt2_retCode())) {
+                logger.info("合利宝订单放款失败,payNo={}", payResultMessage.getPayNo());
+                payFail(payResultMessage.getPayNo(), resVo.getRt3_retMsg());
+                return;
+            }
+            // RECEIVE 已接收 INIT初始化 DOING处理中 SUCCESS成功 FAIL失败 REFUND退款
+            switch (resVo.getRt8_orderStatus()) {
+                case "SUCCESS":
+                    paySuccess(payNo);
+                    break;
+                case "FAIL":
+                    logger.error("订单放款失败,payResultMessage={},合利宝返回结果={}", JSON.toJSONString(payResultMessage), resVo);
+                    payFail(payNo, resVo.getRt3_retMsg() + ":" + resVo.getRt9_desc());
+                    break;
+                case "REFUND":
+                    logger.error("订单放款失败,payResultMessage={},合利宝返回结果={}", JSON.toJSONString(payResultMessage), resVo);
+                    payFail(payNo, resVo.getRt3_retMsg() + ":" + resVo.getRt9_desc());
+                    break;
+                default:
+                    // RECEIVE、INIT、DOING重新进入死信队列等待
+                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                    if (payResultMessage.getTimes() < 6) {
+                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                    } else {
+                        logger.info("查询订单,payResultMessage={},合利宝返回结果={}", JSON.toJSONString(payResultMessage), resVo);
+                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                    }
+                    break;
+            }
+        } catch (Exception e) {
+            logger.error("合利宝查询委托代付结果异常,payResultMessage={}", JSON.toJSONString(payResultMessage));
+            logger.error("合利宝查询委托代付结果异常", e);
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
         }
     }
