@@ -147,62 +147,76 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
     @Override
     public void changjiePayQuery(OrderPayQueryMessage payResultMessage) {
         logger.info("#[畅捷订单放款结果查询]-[开始]-payResultMessage={}", JSONObject.toJSON(payResultMessage));
+
+        //放款流水号
+        String payNo = payResultMessage.getPayNo();
+        //根据放款流水号查询放款流水记录
+        OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
+        if (null == orderPay) {
+            logger.error("根据放款流水号查询放款流水记录为空-payNo={}", payNo);
+            return;
+        }
+        if (1 < orderPay.getPayStatus()) {
+            logger.info("该放款流水记录放款状态异常-payNo={},status={}", payNo, orderPay.getPayStatus());
+            return;
+        }
+        //查询待放款订单信息
+        Order order = orderService.selectByPrimaryKey(orderPay.getOrderId());
+        logger.info("#[查询待放款订单信息]-order={}", JSONObject.toJSON(order));
+        //放款中的订单才能放款
+        if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
+            logger.info("该订单的状态不是放款中");
+            return;
+        }
+        //获取商户信息
+        Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
+        if (null == merchant || StringUtils.isBlank(merchant.getCjPartnerId()) || StringUtils.isBlank(merchant.getCjPublicKey()) || StringUtils.isBlank(merchant.getCjMerchantPrivateKey())) {
+            logger.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
+            return;
+        }
+        //唯一流水号
+        String seriesNo = "p" + (TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6));
+        TransCode4QueryRequest transCode4QueryRequest = new TransCode4QueryRequest();
+        transCode4QueryRequest.setRequestSeriesNo(seriesNo);
+        transCode4QueryRequest.setSeriesNo(payNo);
+        transCode4QueryRequest.setPartnerId(merchant.getCjPartnerId());
+        transCode4QueryRequest.setPrivateKey(merchant.getCjMerchantPrivateKey());
+        transCode4QueryRequest.setPublicKey(merchant.getCjPublicKey());
+        //去调畅捷代付放款结果查询
+        String result = null;
         try {
-            //放款流水号
-            String payNo = payResultMessage.getPayNo();
-            //获取商户信息
-            Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
-            if (null == merchant || StringUtils.isBlank(merchant.getCjPartnerId()) || StringUtils.isBlank(merchant.getCjPublicKey()) || StringUtils.isBlank(merchant.getCjMerchantPrivateKey())) {
-                logger.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
-                throw new RuntimeException("该商户信息异常");
-            }
-            //唯一流水号
-            String seriesNo = "p" + (TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6));
-            TransCode4QueryRequest transCode4QueryRequest = new TransCode4QueryRequest();
-            transCode4QueryRequest.setRequestSeriesNo(seriesNo);
-            transCode4QueryRequest.setSeriesNo(payNo);
-            transCode4QueryRequest.setPartnerId(merchant.getCjPartnerId());
-            transCode4QueryRequest.setPrivateKey(merchant.getCjMerchantPrivateKey());
-            transCode4QueryRequest.setPublicKey(merchant.getCjPublicKey());
-            //去调畅捷代付放款结果查询
-            String result = null;
-            try {
-                result = changjiePayService.transCode4Query(transCode4QueryRequest);
-            } catch (Exception e) {
-                logger.error("#[去调畅捷代付放款结果查询]-[异常]-e={}", e);
-                throw new RuntimeException("去调畅捷代付放款结果查询异常");
-            }
-            if (null == result) {
-                logger.info("#[去调畅捷代付放款结果查询]-[返回结果为空]");
-                throw new RuntimeException("去调畅捷代付放款结果查询返回结果为空");
-            }
-            //解析返回结果
-            JSONObject jsonObject = JSONObject.parseObject(result);
-            //畅捷代付放款成功
-            if (StringUtils.equals("S", jsonObject.getString("AcceptStatus")) && (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.SUCCESS_0000.getCode(), jsonObject.getString("PlatformRetCode"))) && (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.SUCCESS_000000.getCode(), jsonObject.getString("OriginalRetCode")))) {
-                paySuccess(payNo);
-            }
-            //畅捷代付放款失败
-            else if (StringUtils.equals("F", jsonObject.getString("AcceptStatus"))) {
-                payFail(payNo, jsonObject.getString("AppRetMsg"));
-            }
-            //畅捷代付放款失败
-            else if (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_1000.getCode(), jsonObject.getString("PlatformRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_2004.getCode(), jsonObject.getString("PlatformRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_2009.getCode(), jsonObject.getString("PlatformRetCode"))) {
-                payFail(payNo, jsonObject.getString("PlatformErrorMessage"));
-            }
-            //畅捷代付放款失败
-            else if (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_111111.getCode(), jsonObject.getString("OriginalRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_000005.getCode(), jsonObject.getString("OriginalRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_000006.getCode(), jsonObject.getString("OriginalRetCode"))) {
-                payFail(payNo, jsonObject.getString("OriginalErrorMessage"));
-            }
-            //畅捷代付放款处理中
-            else {
-                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
-            }
-            logger.info("#[畅捷订单放款结果查询]-[结束]");
+            result = changjiePayService.transCode4Query(transCode4QueryRequest);
         } catch (Exception e) {
-            logger.error("#[畅捷订单放款结果查询]-[异常]-e={}", e);
+            logger.error("#[去调畅捷代付放款结果查询]-[异常]-e={}", e);
+            return;
+        }
+        if (null == result) {
+            logger.info("#[去调畅捷代付放款结果查询]-[返回结果为空]");
+            return;
+        }
+        //解析返回结果
+        JSONObject jsonObject = JSONObject.parseObject(result);
+        //畅捷代付放款成功
+        if (StringUtils.equals("S", jsonObject.getString("AcceptStatus")) && (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.SUCCESS_0000.getCode(), jsonObject.getString("PlatformRetCode"))) && (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.SUCCESS_000000.getCode(), jsonObject.getString("OriginalRetCode")))) {
+            paySuccess(payNo);
+        }
+        //畅捷代付放款失败
+        else if (StringUtils.equals("F", jsonObject.getString("AcceptStatus"))) {
+            payFail(payNo, jsonObject.getString("AppRetMsg"));
+        }
+        //畅捷代付放款失败
+        else if (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_1000.getCode(), jsonObject.getString("PlatformRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_2004.getCode(), jsonObject.getString("PlatformRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_2009.getCode(), jsonObject.getString("PlatformRetCode"))) {
+            payFail(payNo, jsonObject.getString("PlatformErrorMessage"));
+        }
+        //畅捷代付放款失败
+        else if (StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_111111.getCode(), jsonObject.getString("OriginalRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_000005.getCode(), jsonObject.getString("OriginalRetCode")) || StringUtils.equals(ChangjiePayOrRepayOrQueryReturnCodeEnum.FAIL_000006.getCode(), jsonObject.getString("OriginalRetCode"))) {
+            payFail(payNo, jsonObject.getString("OriginalErrorMessage"));
+        }
+        //畅捷代付放款处理中
+        else {
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
         }
+        logger.info("#[畅捷订单放款结果查询]-[结束]");
     }
 
     private void paySuccess(String payNo) {
