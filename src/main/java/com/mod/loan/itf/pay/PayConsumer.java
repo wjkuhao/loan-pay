@@ -24,63 +24,63 @@ import org.springframework.stereotype.Component;
 @Component
 public class PayConsumer {
 
-	private static final Logger logger = LoggerFactory.getLogger(PayConsumer.class);
+    private static final Logger logger = LoggerFactory.getLogger(PayConsumer.class);
 
-	@Autowired
-	private OrderService orderService;
-	@Autowired
-	private OrderPayService orderPayService;
-	@Autowired
-	private KuaiqianService kuaiqianService;
-	@Autowired
-	private RedisMapper redisMapper;
+    @Autowired
+    private OrderService orderService;
+    @Autowired
+    private OrderPayService orderPayService;
+    @Autowired
+    private KuaiqianService kuaiqianService;
+    @Autowired
+    private RedisMapper redisMapper;
     @Autowired
     OrderChangjiePayService orderChangjiePayService;
 
-	@RabbitListener(queues = "queue_order_pay", containerFactory = "order_pay")
-	@RabbitHandler
-	public void order_pay(Message mess) {
-		OrderPayMessage payMessage = JSONObject.parseObject(mess.getBody(), OrderPayMessage.class);
-		if (!redisMapper.lock(RedisConst.ORDER_LOCK + payMessage.getOrderId(), 3600)) {
-			logger.error("放款消息重复,message={}", JSON.toJSONString(payMessage));
-			return;
-		}
-		if (orderService.countOrderPaySuccessRecord(payMessage.getOrderId()) > 0) {
-			logger.error("orderId={}已存在放款成功记录,本次放款取消", payMessage.getOrderId());
-			return;
-		}
-		String payType = StringUtils.isNotBlank(payMessage.getPayType()) ? payMessage.getPayType() : "";
-		switch (payType) {
-		case "helibao":
-			orderPayService.helibaoPay(payMessage);
-			break;
-		case "fuyou":
-			orderPayService.fuyouPay(payMessage);
-			break;
-		case "huiju":
-			orderPayService.huijuPay(payMessage);
-			break;
-		case "yeepay":
-			orderPayService.yeePay(payMessage);
-			break;
-		case "kuaiqian":
-			kuaiqianService.kuaiqianPay(payMessage);
-            break;
+    @RabbitListener(queues = "queue_order_pay", containerFactory = "order_pay")
+    @RabbitHandler
+    public void order_pay(Message mess) {
+        OrderPayMessage payMessage = JSONObject.parseObject(mess.getBody(), OrderPayMessage.class);
+        if (!redisMapper.lock(RedisConst.ORDER_LOCK + payMessage.getOrderId(), 3600)) {
+            logger.error("放款消息重复,message={}", JSON.toJSONString(payMessage));
+            return;
+        }
+        if (orderService.countOrderPaySuccessRecord(payMessage.getOrderId()) > 0) {
+            logger.error("orderId={}已存在放款成功记录,本次放款取消", payMessage.getOrderId());
+            return;
+        }
+        String payType = StringUtils.isNotBlank(payMessage.getPayType()) ? payMessage.getPayType() : "";
+        switch (payType) {
+            case "helibao":
+                orderPayService.helibaoPay(payMessage);
+                break;
+            case "fuyou":
+                orderPayService.fuyouPay(payMessage);
+                break;
+            case "huiju":
+                orderPayService.huijuPay(payMessage);
+                break;
+            case "yeepay":
+                orderPayService.yeePay(payMessage);
+                break;
+            case "kuaiqian":
+                kuaiqianService.kuaiqianPay(payMessage);
+                break;
             case "changjie":
                 orderChangjiePayService.changjiePay(payMessage);
-			break;
-		default:
-			logger.error("放款消息payType异常,payMessage={}", payMessage);
-			break;
-		}
-	}
+                break;
+            default:
+                logger.error("放款消息payType异常,payMessage={}", payMessage);
+                break;
+        }
+    }
 
-	@Bean("order_pay")
-	public SimpleRabbitListenerContainerFactory pointTaskContainerFactoryLoan(ConnectionFactory connectionFactory) {
-		SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
-		factory.setConnectionFactory(connectionFactory);
-		factory.setPrefetchCount(1);
-		factory.setConcurrentConsumers(1);
-		return factory;
-	}
+    @Bean("order_pay")
+    public SimpleRabbitListenerContainerFactory pointTaskContainerFactoryLoan(ConnectionFactory connectionFactory) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setPrefetchCount(1);
+        factory.setConcurrentConsumers(1);
+        return factory;
+    }
 }
