@@ -1,6 +1,14 @@
 package com.mod.loan.itf.pay;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.mod.loan.common.message.OrderPayMessage;
+import com.mod.loan.config.redis.RedisConst;
+import com.mod.loan.config.redis.RedisMapper;
 import com.mod.loan.service.KuaiqianService;
+import com.mod.loan.service.OrderChangjiePayService;
+import com.mod.loan.service.OrderPayService;
+import com.mod.loan.service.OrderService;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,14 +20,6 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
-
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
-import com.mod.loan.common.message.OrderPayMessage;
-import com.mod.loan.config.redis.RedisConst;
-import com.mod.loan.config.redis.RedisMapper;
-import com.mod.loan.service.OrderPayService;
-import com.mod.loan.service.OrderService;
 
 @Component
 public class PayConsumer {
@@ -34,6 +34,8 @@ public class PayConsumer {
 	private KuaiqianService kuaiqianService;
 	@Autowired
 	private RedisMapper redisMapper;
+    @Autowired
+    OrderChangjiePayService orderChangjiePayService;
 
 	@RabbitListener(queues = "queue_order_pay", containerFactory = "order_pay")
 	@RabbitHandler
@@ -63,6 +65,9 @@ public class PayConsumer {
 			break;
 		case "kuaiqian":
 			kuaiqianService.kuaiqianPay(payMessage);
+            break;
+            case "changjie":
+                orderChangjiePayService.changjiePay(payMessage);
 			break;
 		default:
 			logger.error("放款消息payType异常,payMessage={}", payMessage);
