@@ -92,6 +92,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             payOrder.setBankAcctId(userBank.getCardNo());
             String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
             //生成pki加密报文
+            logger.info("快钱放款加密开始");
             String pkiMsg = KuaiqianHttpUtil.genPayPKIMsg(orderXml, merchant.getKqMerchantCode());
             //获取请求响应的加密数据
             String sealMsg = KuaiqianHttpUtil.invokeCSSCollection(pkiMsg, kuaiqian_pay_url);
@@ -134,7 +135,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("快钱订单放款异常， message={}，jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
-            logger.error("快钱订单放款异常", e);
+            logger.error("快钱订单放款异常，e={}", e);
         } finally {
             // 释放锁
             redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
