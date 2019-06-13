@@ -75,6 +75,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     private RabbitTemplate rabbitTemplate;
     @Autowired
     private YeepayService yeepayService;
+    @Autowired
+    private SmsService smsService;
 
     @Override
     public void helibaoPay(OrderPayMessage payMessage) {
@@ -747,12 +749,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             orderService.updatePayCallbackInfo(order1, orderPay1);
             // 给用户短信通知 放款成功
             User user = userService.selectByPrimaryKey(order.getUid());
-            QueueSmsMessage smsMessage = new QueueSmsMessage();
-            smsMessage.setClientAlias(order.getMerchant());
-            smsMessage.setType(SmsTemplate.T2001.getKey());
-            smsMessage.setPhone(user.getUserPhone());
-            smsMessage.setParams(order.getActualMoney() + "|" + new DateTime(repayTime).toString("MM月dd日"));
-            rabbitTemplate.convertAndSend(RabbitConst.queue_sms, smsMessage);
+            smsService.send(order.getMerchant(), SmsTemplate.T2001.getKey(), SmsTemplate.T2001.getKey(),
+                    order.getActualMoney() + "|" + new DateTime(repayTime).toString("MM月dd日"), user.getUserOrigin());
         } else {
             logger.error("查询代付结果异常,payNo={}", payNo);
         }
