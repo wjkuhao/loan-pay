@@ -60,13 +60,13 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
             //放款中的订单才能放款
             if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
                 logger.info("该订单的状态不是放款中");
-                throw new RuntimeException("该订单的状态不是放款中");
+                return;
             }
             //获取商户信息
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             if (null == merchant || StringUtils.isBlank(merchant.getCjPartnerId()) || StringUtils.isBlank(merchant.getCjPublicKey()) || StringUtils.isBlank(merchant.getCjMerchantPrivateKey())) {
                 logger.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
-                throw new RuntimeException("该商户信息异常");
+                return;
             }
             //获取该订单的银行卡号信息
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
@@ -89,16 +89,10 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
             transCode4PayRequest.setPrivateKey(merchant.getCjMerchantPrivateKey());
             transCode4PayRequest.setPublicKey(merchant.getCjPublicKey());
             //去调畅捷代付放款
-            String result = null;
-            try {
-                result = changjiePayService.transCode4Pay(transCode4PayRequest);
-            } catch (Exception e) {
-                logger.error("#[去调畅捷代付放款]-[异常]-e={}", e);
-                throw new RuntimeException("去调畅捷代付放款异常");
-            }
+            String result = changjiePayService.transCode4Pay(transCode4PayRequest);
             if (null == result) {
                 logger.info("#[去调畅捷代付放款]-[返回结果为空]");
-                throw new RuntimeException("去调畅捷代付放款返回结果为空");
+                return;
             }
             //落支付记录
             OrderPay orderPay = new OrderPay();
@@ -133,7 +127,6 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
                 //放款失败
                 record.setStatus(OrderEnum.LOAN_FAILED.getCode());
                 orderService.updatePayInfo(record, orderPay);
-                redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
             }
             logger.info("#[畅捷订单放款]-[结束]");
         } catch (Exception e) {
@@ -147,13 +140,12 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
     @Override
     public void changjiePayQuery(OrderPayQueryMessage payResultMessage) {
         logger.info("#[畅捷订单放款结果查询]-[开始]-payResultMessage={}", JSONObject.toJSON(payResultMessage));
-
         //放款流水号
         String payNo = payResultMessage.getPayNo();
         //根据放款流水号查询放款流水记录
         OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
         if (null == orderPay) {
-            logger.error("根据放款流水号查询放款流水记录为空-payNo={}", payNo);
+            logger.info("根据放款流水号查询放款流水记录为空-payNo={}", payNo);
             return;
         }
         if (1 < orderPay.getPayStatus()) {
@@ -183,13 +175,7 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
         transCode4QueryRequest.setPrivateKey(merchant.getCjMerchantPrivateKey());
         transCode4QueryRequest.setPublicKey(merchant.getCjPublicKey());
         //去调畅捷代付放款结果查询
-        String result = null;
-        try {
-            result = changjiePayService.transCode4Query(transCode4QueryRequest);
-        } catch (Exception e) {
-            logger.error("#[去调畅捷代付放款结果查询]-[异常]-e={}", e);
-            return;
-        }
+        String result = changjiePayService.transCode4Query(transCode4QueryRequest);
         if (null == result) {
             logger.info("#[去调畅捷代付放款结果查询]-[返回结果为空]");
             return;
@@ -265,15 +251,5 @@ public class OrderChangjiePayServiceImpl extends BaseServiceImpl<OrderPay, Strin
         } else {
             logger.error("查询代付结果异常,payNo={}", payNo);
         }
-    }
-
-    /**
-     * 打款失败短信验证码发送
-     */
-    private void sendSmsMessage(String merchant, String msg) {
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "13979127403", msg));
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18072878602", msg));
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "15757127746", msg));
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18958106941", msg));
     }
 }

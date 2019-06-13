@@ -37,11 +37,12 @@ public class ChangjiePayServiceImpl implements ChangjiePayService {
     String changjiePayCallbackUrl;
 
     @Override
-    public String transCode4Pay(TransCode4PayRequest request) throws Exception {
+    public String transCode4Pay(TransCode4PayRequest request) {
         if (null == request || StringUtils.isEmpty(request.getRequestSeriesNo()) || StringUtils.isEmpty(request.getName()) || StringUtils.isEmpty(request.getBankName())
                 || StringUtils.isEmpty(request.getBankCardNo()) || null == request.getAmount() || request.getAmount().compareTo(BigDecimal.ZERO) <= 0
                 || StringUtils.isEmpty(request.getPartnerId()) || StringUtils.isEmpty(request.getPublicKey()) || StringUtils.isEmpty(request.getPrivateKey())) {
-            throw new Exception("参数为空");
+            logger.info("参数为空");
+            return null;
         }
         //组装公共请求参数
         Map<String, String> origMap = BaseParameter.requestBaseParameter(changjiePayOrRepayOrQuery, changjieVersion, request.getPartnerId());
@@ -72,10 +73,11 @@ public class ChangjiePayServiceImpl implements ChangjiePayService {
     }
 
     @Override
-    public String transCode4Query(TransCode4QueryRequest request) throws Exception {
+    public String transCode4Query(TransCode4QueryRequest request) {
         if (null == request || StringUtils.isEmpty(request.getRequestSeriesNo()) || StringUtils.isEmpty(request.getSeriesNo())
                 || StringUtils.isEmpty(request.getPartnerId()) || StringUtils.isEmpty(request.getPrivateKey())) {
-            throw new Exception("参数为空");
+            logger.info("参数为空");
+            return null;
         }
         //组装公共请求参数
         Map<String, String> origMap = BaseParameter.requestBaseParameter(changjiePayOrRepayOrQuery, changjieVersion, request.getPartnerId());

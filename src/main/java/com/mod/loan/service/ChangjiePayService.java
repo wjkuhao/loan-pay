@@ -15,7 +15,7 @@ public interface ChangjiePayService {
      * @param request
      * @return
      */
-    String transCode4Pay(TransCode4PayRequest request) throws Exception;
+    String transCode4Pay(TransCode4PayRequest request);
 
     /**
      * 单笔交易查询
@@ -23,7 +23,7 @@ public interface ChangjiePayService {
      * @param request
      * @return
      */
-    String transCode4Query(TransCode4QueryRequest request) throws Exception;
+    String transCode4Query(TransCode4QueryRequest request);
 
 
 }
