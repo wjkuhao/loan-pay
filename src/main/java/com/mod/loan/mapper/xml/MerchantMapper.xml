@@ -12,9 +12,8 @@
 		<result column="merchant_channel" jdbcType="VARCHAR" property="merchantChannel" />
 		<result column="hlb_id" jdbcType="VARCHAR" property="hlbId" />
 		<result column="hlb_rsa_private_key" jdbcType="LONGVARCHAR" property="hlbRsaPrivateKey" />
-		<result column="hlb_rsa_public_key" jdbcType="LONGVARCHAR" property="hlbRsaPublicKey" />
-		<result column="hlb_md5_key" jdbcType="LONGVARCHAR" property="hlbMd5Key" />
-		<result column="hlb_des_key" jdbcType="LONGVARCHAR" property="hlbDesKey" />
+		<result column="hlb_entrusted_sign_key" jdbcType="VARCHAR" property="hlbEntrustedSignKey" />
+		<result column="hlb_entrusted_private_key" jdbcType="VARCHAR" property="hlbEntrustedPrivateKey" />
 		<result column="fuyou_merid" jdbcType="VARCHAR" property="fuyou_merid" />
 		<result column="fuyou_secureid" jdbcType="VARCHAR" property="fuyou_secureid" />
 		<result column="fuyou_h5key" jdbcType="VARCHAR" property="fuyou_h5key" />

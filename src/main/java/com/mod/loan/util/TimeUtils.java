@@ -2,6 +2,7 @@ package com.mod.loan.util;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 
 public class TimeUtils {
@@ -13,6 +14,8 @@ public class TimeUtils {
 	public final static String dateformat4 = "yyyyMMdd";
 	public final static String dateformat5 = "yyyyMMddHHmmss";
 	public final static String dateformat6 = "yyyyMMddHHmmssSSS";
+    public final static String dateformat7 = "HHmm";
+    public final static String dateformat8 = "HHmmss";
 
 	private TimeUtils() {
 		throw new Error("can't instance this tool class");
@@ -39,5 +42,49 @@ public class TimeUtils {
 		return d;
 	}
 
+	/**
+	 * 获取昨日时间
+	 *
+	 * @return
+	 */
+	public static Date getYesterday() {
+		Date now = new Date();
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTime(now);
+		int year = calendar.get(Calendar.YEAR);
+		int month = calendar.get(Calendar.MONTH);
+		int day = calendar.get(Calendar.DAY_OF_YEAR);
+		calendar.clear();
+		calendar.set(Calendar.YEAR, year);
+		calendar.set(Calendar.MONTH, month);
+		calendar.set(Calendar.DAY_OF_YEAR, day - 1);
+		calendar.set(Calendar.HOUR, 0);
+		calendar.set(Calendar.MINUTE, 0);
+		calendar.set(Calendar.SECOND, 00);
+		Date yesterday = calendar.getTime();
+		return yesterday;
+	}
 
+	/**
+	 * 获取明日时间
+	 *
+	 * @return
+	 */
+	public static Date getTomorrow() {
+		Date now = new Date();
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTime(now);
+		int year = calendar.get(Calendar.YEAR);
+		int month = calendar.get(Calendar.MONTH);
+		int day = calendar.get(Calendar.DAY_OF_YEAR);
+		calendar.clear();
+		calendar.set(Calendar.YEAR, year);
+		calendar.set(Calendar.MONTH, month);
+		calendar.set(Calendar.DAY_OF_YEAR, day + 1);
+		calendar.set(Calendar.HOUR, 23);
+		calendar.set(Calendar.MINUTE, 59);
+		calendar.set(Calendar.SECOND, 59);
+		Date yesterday = calendar.getTime();
+		return yesterday;
+	}
 }
