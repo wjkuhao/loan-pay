@@ -56,6 +56,9 @@ public class Merchant {
     @Column(name = "hlb_rsa_private_key")
     private String hlb_rsa_private_key;
 
+    @Column(name = "hlb_merchant_sign")
+    private String hlbMerchantSign;
+
     @Column(name = "hlb_entrusted_sign_key")
     private String hlbEntrustedSignKey;
 
@@ -97,6 +100,18 @@ public class Merchant {
 
     @Column(name = "yeepay_loan_private_key")
     private String yeepay_loan_private_key;
+
+    @Column(name = "kq_merchant_id")
+    private String kqMerchantId;
+
+    @Column(name = "kq_terminal_id")
+    private String kqTerminalId;
+
+    @Column(name = "kq_cert_path")
+    private String kqCertPath;
+
+    @Column(name = "kq_cert_pwd")
+    private String kqCertPwd;
 
     @Column(name = "kq_merchant_code")
     private String kqMerchantCode;
@@ -363,6 +378,38 @@ public class Merchant {
 
     public void setBindType(Integer bindType) {
         this.bindType = bindType;
+    }
+
+    public String getKqMerchantId() {
+        return kqMerchantId;
+    }
+
+    public void setKqMerchantId(String kqMerchantId) {
+        this.kqMerchantId = kqMerchantId;
+    }
+
+    public String getKqTerminalId() {
+        return kqTerminalId;
+    }
+
+    public void setKqTerminalId(String kqTerminalId) {
+        this.kqTerminalId = kqTerminalId;
+    }
+
+    public String getKqCertPath() {
+        return kqCertPath;
+    }
+
+    public void setKqCertPath(String kqCertPath) {
+        this.kqCertPath = kqCertPath;
+    }
+
+    public String getKqCertPwd() {
+        return kqCertPwd;
+    }
+
+    public void setKqCertPwd(String kqCertPwd) {
+        this.kqCertPwd = kqCertPwd;
     }
 
     public String getKqMerchantCode() {

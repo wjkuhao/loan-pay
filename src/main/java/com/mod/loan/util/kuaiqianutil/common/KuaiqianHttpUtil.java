@@ -37,22 +37,6 @@ public class KuaiqianHttpUtil {
     //字符编码
     private static String encoding = "UTF-8";
 
-    public static void main(String[] args) {
-        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
-                "<pay2BankOrder>\n" +
-                "<orderId>p20190611112204210037</orderId>\n" +
-                "<bankName>招商银行</bankName>\n" +
-                "<branchName></branchName>\n" +
-                "<creditName>聂林</creditName>\n" +
-                "<mobile></mobile>\n" +
-                "<bankAcctId>6214835892387117</bankAcctId>\n" +
-                "<amount>14</amount>\n" +
-                "<province></province>\n" +
-                "<city></city>\n" +
-                "<remark></remark>\n" +
-                "<feeAction>1</feeAction>";
-        genPayPKIMsg(xml, "10210634120");
-    }
     /**
      * 明文加密加签
      *
@@ -65,6 +49,7 @@ public class KuaiqianHttpUtil {
         String originalStr = xml;
         //加签、加密
         Mpf mpf = genMpf(memberCode);
+        logger.info("#[快钱放款加密开始]-merchantCode={},mpf={}", memberCode, JSONObject.toJSON(mpf));
         SealedData sealedData = null;
         try {
             ICryptoService service = CryptoServiceFactory.createCryptoService();
@@ -99,6 +84,7 @@ public class KuaiqianHttpUtil {
         String originalStr = xml;
         //加签、加密
         Mpf mpf = genMpf(memberCode);
+        logger.info("#[快钱放款查询加密开始]-merchantCode={},mpf={}", memberCode, JSONObject.toJSON(mpf));
         SealedData sealedData = null;
         try {
             ICryptoService service = CryptoServiceFactory.createCryptoService();
@@ -126,7 +112,7 @@ public class KuaiqianHttpUtil {
         return requestXml;
     }
 
-    public static String genPayNoticeXml(String ori, String memberCode){
+    public static String genPayNoticeXml(String ori, String memberCode) {
         Mpf mpf = genMpf(memberCode);
         SealedData sealedData = null;
         try {
@@ -135,7 +121,7 @@ public class KuaiqianHttpUtil {
         } catch (CryptoException e) {
             System.out.println(e);
         }
-        NotifyResponse response = CCSUtil.genNoticeResponse(memberCode , VERSION);
+        NotifyResponse response = CCSUtil.genNoticeResponse(memberCode, VERSION);
         byte[] nullbyte = {};
         byte[] byteOri = sealedData.getOriginalData() == null ? nullbyte : sealedData.getOriginalData();
         byte[] byteEnc = sealedData.getEncryptedData() == null ? nullbyte : sealedData.getEncryptedData();
@@ -144,9 +130,9 @@ public class KuaiqianHttpUtil {
         response.getNotifyResponseBody().getSealDataType().setOriginalData(PKIUtil.byte2UTF8StringWithBase64(byteOri));
         //获取加签报文
         response.getNotifyResponseBody().getSealDataType().setSignedData(PKIUtil.byte2UTF8StringWithBase64(byteSig));
-		//获取加密报文
+        //获取加密报文
         response.getNotifyResponseBody().getSealDataType().setEncryptedData(PKIUtil.byte2UTF8StringWithBase64(byteEnc));
-		//数字信封
+        //数字信封
         response.getNotifyResponseBody().getSealDataType().setDigitalEnvelope(PKIUtil.byte2UTF8StringWithBase64(byteEnv));
         //请求报文
         String requestXml = XmlUtils.convertToXml(response, encoding);
@@ -257,12 +243,12 @@ public class KuaiqianHttpUtil {
         }
     }
 
-    public static Pay2bankNotify unsealOrderPayNotice(NotifyRequest request, String memberCode){
+    public static Pay2bankNotify unsealOrderPayNotice(NotifyRequest request, String memberCode) {
         SealedData sealedData = new SealedData();
-        sealedData.setOriginalData(request.getNotifyRequestBody().getSealDataType().getOriginalData()==null?null:PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getOriginalData()));
-        sealedData.setSignedData(request.getNotifyRequestBody().getSealDataType().getSignedData()==null?null:PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getSignedData()));
-        sealedData.setEncryptedData(request.getNotifyRequestBody().getSealDataType().getEncryptedData()==null?null:PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getEncryptedData()));
-        sealedData.setDigitalEnvelope(request.getNotifyRequestBody().getSealDataType().getDigitalEnvelope()==null?null:PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getDigitalEnvelope()));
+        sealedData.setOriginalData(request.getNotifyRequestBody().getSealDataType().getOriginalData() == null ? null : PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getOriginalData()));
+        sealedData.setSignedData(request.getNotifyRequestBody().getSealDataType().getSignedData() == null ? null : PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getSignedData()));
+        sealedData.setEncryptedData(request.getNotifyRequestBody().getSealDataType().getEncryptedData() == null ? null : PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getEncryptedData()));
+        sealedData.setDigitalEnvelope(request.getNotifyRequestBody().getSealDataType().getDigitalEnvelope() == null ? null : PKIUtil.utf8String2ByteWithBase64(request.getNotifyRequestBody().getSealDataType().getDigitalEnvelope()));
         Mpf mpf = genMpf(memberCode);
         UnsealedData unsealedData = null;
         try {
@@ -277,7 +263,7 @@ public class KuaiqianHttpUtil {
             logger.info("解密后返回报文 = " + rtnString);
             return XmlUtils.convertToJavaBean(rtnString, Pay2bankNotify.class);
         } else {
-            String  rtnString = PKIUtil.byte2UTF8String(sealedData.getOriginalData());
+            String rtnString = PKIUtil.byte2UTF8String(sealedData.getOriginalData());
             logger.info("解密后返回报文 = " + rtnString);
             return null;
         }
@@ -285,6 +271,7 @@ public class KuaiqianHttpUtil {
 
     /**
      * 获取异步通知内容
+     *
      * @param httpRequest
      * @return
      */
