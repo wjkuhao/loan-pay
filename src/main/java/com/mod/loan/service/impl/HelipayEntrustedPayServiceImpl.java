@@ -2,14 +2,8 @@ package com.mod.loan.service.impl;
 
 import com.alibaba.fastjson.JSONObject;
 import com.mod.loan.config.Constant;
-import com.mod.loan.model.Merchant;
-import com.mod.loan.model.Order;
-import com.mod.loan.model.User;
-import com.mod.loan.model.UserBank;
-import com.mod.loan.service.HelipayEntrustedPayService;
-import com.mod.loan.service.MerchantService;
-import com.mod.loan.service.UserBankService;
-import com.mod.loan.service.UserService;
+import com.mod.loan.model.*;
+import com.mod.loan.service.*;
 import com.mod.loan.util.heliutil.*;
 import com.mod.loan.util.heliutil.vo.*;
 import com.mod.loan.util.oss.OssUtil;
@@ -40,6 +34,8 @@ public class HelipayEntrustedPayServiceImpl implements HelipayEntrustedPayServic
     private UserBankService userBankService;
     @Autowired
     private MerchantService merchantService;
+    @Autowired
+    private BankService bankService;
 
     /**
      * 绑定用户到委托代付商户端
@@ -236,6 +232,15 @@ public class HelipayEntrustedPayServiceImpl implements HelipayEntrustedPayServic
         OrderResVo orderResVo = new OrderResVo();
         try {
             OrderVo orderVo = new OrderVo();
+
+            Bank bank = bankService.selectByPrimaryKey(userBank.getCardCode());
+            if (null == bank) {
+                logger.info("放款失败,找不到对应uid为{}的银行卡名称{}", user.getId(), userBank.getCardName());
+                orderResVo.setRt2_retCode("-1");
+                orderResVo.setRt3_retMsg("合利宝委托代付打款失败:"+ userBank.getCardCode() +"找不到对应银行卡名称");
+                return orderResVo;
+            }
+
             //交易类型
             orderVo.setP1_bizType("EntrustedLoanTransfer");
             //商户编号
@@ -263,7 +268,7 @@ public class HelipayEntrustedPayServiceImpl implements HelipayEntrustedPayServic
             //借贷记类型
             orderVo.setP13_onlineCardType("DEBIT");
             //银行编码
-            orderVo.setP17_bankCode(userBank.getCardCode());
+            orderVo.setP17_bankCode(bank.getCodeHelipay());
             //通知地址
             orderVo.setP19_callbackUrl("");
             //用途
