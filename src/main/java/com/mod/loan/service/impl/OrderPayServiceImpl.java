@@ -881,7 +881,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
 
     @Override
     public boolean checkPayCondition(Order order) {
-        if (order.getBorrowMoney().compareTo(new BigDecimal(5000)) >= 0) {
+        if (order.getBorrowMoney().compareTo(new BigDecimal(5000)) > 0) {
             order.setStatus(23);
             logger.error("代付检查异常:orderid={},放款金额={}", order.getId(), order.getBorrowMoney());
             sendSmsMessage(order.getMerchant(), "代付检查异常:放款金额大于5000");
