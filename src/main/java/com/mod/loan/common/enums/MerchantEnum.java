@@ -5,8 +5,8 @@ public enum MerchantEnum {
     fuyou(2, "fuyou", "富友"),
     huiju(3, "huiju", "汇聚"),
     yeepay(4, "yeepay", "易宝"),
-    CHANGJIE(5, "changjie", "畅捷"),;
-
+    CHANGJIE(5, "changjie", "畅捷"),
+    jinyuntong(8,"jinyuntong","金运通");
     private Integer code;
     private String abbreviation;
     private String desc;

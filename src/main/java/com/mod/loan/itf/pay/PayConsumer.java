@@ -5,10 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.mod.loan.common.message.OrderPayMessage;
 import com.mod.loan.config.redis.RedisConst;
 import com.mod.loan.config.redis.RedisMapper;
-import com.mod.loan.service.KuaiqianService;
-import com.mod.loan.service.OrderChangjiePayService;
-import com.mod.loan.service.OrderPayService;
-import com.mod.loan.service.OrderService;
+import com.mod.loan.service.*;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +32,9 @@ public class PayConsumer {
     @Autowired
     private RedisMapper redisMapper;
     @Autowired
-    OrderChangjiePayService orderChangjiePayService;
+    private OrderChangjiePayService orderChangjiePayService;
+    @Autowired
+    private OrderJinYunTongPayService orderJinYunTongPayService;
 
     @RabbitListener(queues = "queue_order_pay", containerFactory = "order_pay")
     @RabbitHandler
@@ -68,6 +67,9 @@ public class PayConsumer {
                 break;
             case "changjie":
                 orderChangjiePayService.changjiePay(payMessage);
+                break;
+            case "jinyuntong":
+                orderJinYunTongPayService.pay(payMessage);
                 break;
             default:
                 logger.error("放款消息payType异常,payMessage={}", payMessage);

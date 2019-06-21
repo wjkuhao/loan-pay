@@ -5,6 +5,7 @@ import com.mod.loan.common.message.OrderPayQueryMessage;
 import com.mod.loan.model.OrderPay;
 import com.mod.loan.service.KuaiqianService;
 import com.mod.loan.service.OrderChangjiePayService;
+import com.mod.loan.service.OrderJinYunTongPayService;
 import com.mod.loan.service.OrderPayService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,9 @@ public class PayQueryConsumer {
     @Autowired
     private KuaiqianService kuaiqianService;
     @Autowired
-    OrderChangjiePayService orderChangjiePayService;
+    private OrderChangjiePayService orderChangjiePayService;
+    @Autowired
+    private OrderJinYunTongPayService orderJinYunTongPayService;
 
     @RabbitListener(queues = "queue_order_pay_query", containerFactory = "order_pay_query")
     @RabbitHandler
@@ -52,6 +55,9 @@ public class PayQueryConsumer {
                 break;
             case 6:
                 kuaiqianService.kuaiqianPayQuery(payResultMessage);
+                break;
+            case 8:
+//                orderJinYunTongPayService.payQuery(payResultMessage);
                 break;
             default:
                 logger.error("放款查询消息payType异常,payResultMessage={}", payResultMessage);
