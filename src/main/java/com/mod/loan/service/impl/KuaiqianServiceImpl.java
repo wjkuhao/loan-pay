@@ -61,53 +61,53 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     @Override
     public void kuaiqianPay(OrderPayMessage payMessage) {
         String jsonStr = null;
+        Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
+        // 放款中的订单才能放款
+        if (order.getStatus() != 22) {
+            logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
+            return;
+        }
+        Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
+        UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
+        User user = userService.selectByPrimaryKey(order.getUid());
+
+        String serials_no = String.format("%s%s%s", "p", new DateTime().toString(TimeUtils.dateformat5), user.getId());
+        BigDecimal amount = order.getActualMoney();
+        // 测试放款一毛钱
+        if ("dev".equals(Constant.ENVIROMENT)) {
+            amount = new BigDecimal("0.1");
+        }
+
+        OrderPay orderPay = new OrderPay();
+        orderPay.setPayNo(serials_no);
+        orderPay.setUid(order.getUid());
+        orderPay.setOrderId(order.getId());
+        // 类型：快钱
+        orderPay.setPayType(6);
+        orderPay.setPayMoney(amount);
+        orderPay.setBank(userBank.getCardName());
+        orderPay.setBankNo(userBank.getCardNo());
+        orderPay.setCreateTime(new Date());
+
+        Pay2bankOrder payOrder = new Pay2bankOrder();
+        //商家订单号 必填
+        payOrder.setOrderId(serials_no);
+        //金额（分） 必填
+        payOrder.setAmount(String.valueOf((amount.multiply(new BigDecimal("100"))).intValue()));
+        //银行名称 必填
+        payOrder.setBankName(userBank.getCardName());
+        //收款人姓名  必填
+        payOrder.setCreditName(user.getUserName());
+        //银行卡号 必填
+        payOrder.setBankAcctId(userBank.getCardNo());
+        String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
         try {
-            Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
-            // 放款中的订单才能放款
-            if (order.getStatus() != 22) {
-                logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
-                return;
-            }
-            Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
-            UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
-            User user = userService.selectByPrimaryKey(order.getUid());
-
-            String serials_no = String.format("%s%s%s", "p", new DateTime().toString(TimeUtils.dateformat5), user.getId());
-            BigDecimal amount = order.getActualMoney();
-            // 测试放款一毛钱
-            if ("dev".equals(Constant.ENVIROMENT)) {
-                amount = new BigDecimal("0.1");
-            }
-
-            Pay2bankOrder payOrder = new Pay2bankOrder();
-            //商家订单号 必填
-            payOrder.setOrderId(serials_no);
-            //金额（分） 必填
-            payOrder.setAmount(String.valueOf((amount.multiply(new BigDecimal("100"))).intValue()));
-            //银行名称 必填
-            payOrder.setBankName(userBank.getCardName());
-            //收款人姓名  必填
-            payOrder.setCreditName(user.getUserName());
-            //银行卡号 必填
-            payOrder.setBankAcctId(userBank.getCardNo());
-            String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
             //生成pki加密报文
             String pkiMsg = KuaiqianHttpUtil.genPayPKIMsg(orderXml, merchant.getKqMerchantCode());
             //获取请求响应的加密数据
             String sealMsg = KuaiqianHttpUtil.invokeCSSCollection(pkiMsg, kuaiqian_pay_url);
             //返回的加密报文解密
             Pay2bankResult pay2bankResult = KuaiqianHttpUtil.unsealMsgPay(sealMsg, merchant.getKqMerchantCode());
-
-            OrderPay orderPay = new OrderPay();
-            orderPay.setPayNo(serials_no);
-            orderPay.setUid(order.getUid());
-            orderPay.setOrderId(order.getId());
-            // 类型：快钱
-            orderPay.setPayType(6);
-            orderPay.setPayMoney(amount);
-            orderPay.setBank(userBank.getCardName());
-            orderPay.setBankNo(userBank.getCardNo());
-            orderPay.setCreateTime(new Date());
             if ("0000".equals(pay2bankResult.getResponseBody().getErrorCode())) {
                 orderPay.setUpdateTime(new Date());
                 // 受理成功,插入打款流水，不改变订单状态
@@ -134,6 +134,12 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             }
         } catch (Exception e) {
             logger.error("快钱订单放款异常， message={}，jsonStr={}", JSON.toJSONString(payMessage), jsonStr);
+            //打卡异常的订单，将订单状态改成受理中，最终结果通过查询来处理
+            orderPay.setPayStatus(1);
+            orderService.updatePayInfo(null, orderPay);
+            // 受理成功，将消息存入死信队列
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait,
+                    new OrderPayQueryMessage(serials_no, merchant.getMerchantAlias(), payMessage.getPayType()));
             logger.error("快钱订单放款异常，e={}", e);
         } finally {
             // 释放锁
@@ -166,29 +172,25 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             //返回的加密报文解密
             Pay2bankSearchResult pay2bankResult = KuaiqianHttpUtil.unsealMsgPayQuery(sealMsg, merchant.getKqMerchantCode());
             String msg = pay2bankResult.getResultList().get(0).getErrorMsg();
-            if ("0000".equals(pay2bankResult.getResultList().get(0).getErrorCode())) {
-                String state = pay2bankResult.getResultList().get(0).getStatus();
-                // 交易成功
-                if ("111".equals(state)) {
-                    logger.info("快钱放款成功");
-                    paySuccess(payNo);
-                    // 交易失败
-                } else if ("112".equals(state)) {
-                    logger.error("快钱放款失败,payResultMessage={},快钱返回结果={}", JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult));
-                    payFail(payNo, msg);
-                } else { // 继续查询
-                    payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                    if (payResultMessage.getTimes() < 6) {
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                    } else {
-                        logger.info("查询订单,payResultMessage={},快钱返回结果={},resultMsg={}",
-                                JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult), msg);
-                        rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
-                    }
+            String state = pay2bankResult.getResultList().get(0).getStatus();
+            //交易处理中，继续查询
+            if ("101".equals(state)) {
+                payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+                if (payResultMessage.getTimes() < 6) {
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                } else {
+                    logger.info("查询订单,payResultMessage={},快钱返回结果={},resultMsg={}",
+                            JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult), msg);
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
                 }
+                // 交易成功
+            } else if ("111".equals(state)) {
+                logger.info("快钱放款成功");
+                paySuccess(payNo);
+                // 交易失败
             } else {
-                logger.info("查询代付结果失败,payNo={},快钱返回结果={},msg={}", payNo, msg);
-                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+                logger.error("快钱放款失败,payResultMessage={},快钱返回结果={}", JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult));
+                payFail(payNo, msg);
             }
         } catch (Exception e) {
             logger.error("快钱查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
