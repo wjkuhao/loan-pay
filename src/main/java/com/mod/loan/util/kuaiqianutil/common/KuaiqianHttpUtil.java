@@ -158,9 +158,9 @@ public class KuaiqianHttpUtil {
         InputStream in_withcode = new ByteArrayInputStream(requestXml.getBytes(encoding));
         method.setRequestBody(in_withcode);
         // url的连接等待超时时间设置
-        client.getHttpConnectionManager().getParams().setConnectionTimeout(2000);
+        client.getHttpConnectionManager().getParams().setConnectionTimeout(10000);
         // 读取数据超时时间设置
-        client.getHttpConnectionManager().getParams().setSoTimeout(3000);
+        client.getHttpConnectionManager().getParams().setSoTimeout(15000);
         method.setRequestEntity(new StringRequestEntity(requestXml, "text/html", "utf-8"));
         client.executeMethod(method);
         //打印服务器返回的状态
