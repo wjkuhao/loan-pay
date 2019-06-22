@@ -250,7 +250,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
      */
     private void sendSmsMessage(String merchant, String msg) {
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "13979127403", msg));
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18072878602", msg));
+        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "15274029140", msg));
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "15757127746", msg));
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18958106941", msg));
     }
