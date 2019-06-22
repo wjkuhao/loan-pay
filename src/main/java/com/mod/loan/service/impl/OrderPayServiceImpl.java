@@ -206,8 +206,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             orderPay.setCreateTime(new Date());
             OrderResVo resVo = null;
             logger.info("hlbEntrustedCuid:{}", userBank.getHlbEntrustedCuid());
-            //用户已完成委托代付注册
-            if (StringUtils.isNotEmpty(userBank.getHlbEntrustedCuid())) {
+            //用户未完成委托代付注册
+            if (StringUtils.isEmpty(userBank.getHlbEntrustedCuid())) {
                 resVo = helipayEntrustedPayService.bindUserCardPay(payNo, user, userBank, order, merchant);
             } else {
                 resVo = helipayEntrustedPayService.entrustedPay(payNo, amount, user, userBank, merchant);
