@@ -57,7 +57,7 @@ public class PayQueryConsumer {
                 kuaiqianService.kuaiqianPayQuery(payResultMessage);
                 break;
             case 8:
-//                orderJinYunTongPayService.payQuery(payResultMessage);
+                orderJinYunTongPayService.payQuery(payResultMessage);
                 break;
             default:
                 logger.error("放款查询消息payType异常,payResultMessage={}", payResultMessage);
