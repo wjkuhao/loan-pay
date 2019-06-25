@@ -16,10 +16,9 @@ import com.mod.loan.service.*;
 import com.mod.loan.util.TimeUtils;
 import com.mod.loan.util.XmlUtils;
 import com.mod.loan.util.kuaiqianutil.common.KuaiqianHttpUtil;
-import com.mod.loan.util.kuaiqianutil.notice.NotifyRequest;
-import com.mod.loan.util.kuaiqianutil.notice.Pay2bankNotify;
 import com.mod.loan.util.kuaiqianutil.pay.Pay2bankOrder;
 import com.mod.loan.util.kuaiqianutil.pay.Pay2bankResult;
+import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchDetail;
 import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchRequestParam;
 import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchResult;
 import org.joda.time.DateTime;
@@ -30,10 +29,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
 
 @Service
 public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> implements KuaiqianService {
@@ -171,6 +169,13 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             String sealMsg = KuaiqianHttpUtil.invokeCSSCollection(pkiMsg, kuaiqian_pay_query_url);
             //返回的加密报文解密
             Pay2bankSearchResult pay2bankResult = KuaiqianHttpUtil.unsealMsgPayQuery(sealMsg, merchant.getKqMerchantCode());
+            List<Pay2bankSearchDetail> list = pay2bankResult.getResultList();
+            //快钱那边处于处理中的订单，需要跟银行对账确认
+            if (list == null) {
+                logger.info("#[快钱查询代付结果]-[需要快钱跟银行确认]-payNo={}", payNo);
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                return;
+            }
             String msg = pay2bankResult.getResultList().get(0).getErrorMsg();
             String state = pay2bankResult.getResultList().get(0).getStatus();
             //交易处理中，继续查询
@@ -195,7 +200,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("快钱查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("快钱查询代付结果异常", e);
-            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payResultMessage);
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
         }
     }
 
