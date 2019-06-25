@@ -35,12 +35,11 @@ public class PayQueryConsumer {
     public void order_pay_query(Message mess) {
         OrderPayQueryMessage payResultMessage = JSONObject.parseObject(mess.getBody(), OrderPayQueryMessage.class);
         OrderPay orderPay = orderPayService.selectByPrimaryKey(payResultMessage.getPayNo());
-        // throw NullPointerException
+        // 放款记录不存在，直接返回
         if (null == orderPay) {
             logger.error("放款记录不存在, message: {}", JSON.toJSONString(payResultMessage));
             return;
         }
-        //
         switch (orderPay.getPayType()) {
             case 1:
                 orderPayService.helibaoPayQuery(payResultMessage);

@@ -33,4 +33,10 @@
 	<select id="countOrderPaySuccessOneDay" resultType="int">
 		select count(0) from tb_order where uid = #{uid} and repay_time = date_format(now(),'%Y-%m-%d')
 	</select>
+
+	<select id="selectOrderByPayNoAndAlias" resultType="map">
+		SELECT o.id,o.`status` FROM tb_order o
+		LEFT JOIN tb_order_pay p ON p.order_id = o.id
+		WHERE p.pay_no = #{payNo} AND o.merchant = #{alias}
+	</select>
 </mapper>

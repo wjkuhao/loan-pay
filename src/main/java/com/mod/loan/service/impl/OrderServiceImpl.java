@@ -1,14 +1,15 @@
 package com.mod.loan.service.impl;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 import com.mod.loan.common.mapper.BaseServiceImpl;
 import com.mod.loan.mapper.OrderMapper;
 import com.mod.loan.mapper.OrderPayMapper;
 import com.mod.loan.model.Order;
 import com.mod.loan.model.OrderPay;
 import com.mod.loan.service.OrderService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
 
 @Service
 public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements OrderService {
@@ -41,5 +42,10 @@ public class OrderServiceImpl extends BaseServiceImpl<Order, Long> implements Or
 	public int countOrderPaySuccessOneDay(Long uid) {
 		return orderMapper.countOrderPaySuccessOneDay(uid);
 	}
+
+    @Override
+    public Map selectOrderByPayNoAndAlias(String payNo, String alias) {
+        return orderMapper.selectOrderByPayNoAndAlias(payNo, alias);
+    }
 
 }

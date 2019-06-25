@@ -21,6 +21,7 @@ import com.mod.loan.util.kuaiqianutil.pay.Pay2bankResult;
 import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchDetail;
 import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchRequestParam;
 import com.mod.loan.util.kuaiqianutil.query.Pay2bankSearchResult;
+import org.apache.commons.collections.MapUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> implements KuaiqianService {
@@ -150,6 +152,13 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         try {
             String payNo = payResultMessage.getPayNo();
             Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
+            //已经打款成功的订单不需要在查询
+            Map order = orderService.selectOrderByPayNoAndAlias(payNo, merchant.getMerchantAlias());
+            if (MapUtils.isNotEmpty(order) && (MapUtils.getIntValue(order, "status") >= 41
+                    && MapUtils.getIntValue(order, "status") <= 43)) {
+                logger.info("快钱订单已放款成功");
+                return;
+            }
 
             Pay2bankSearchRequestParam payOrder = new Pay2bankSearchRequestParam();
             //页码 必填 正整数
@@ -200,7 +209,6 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         } catch (Exception e) {
             logger.error("快钱查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("快钱查询代付结果异常", e);
-            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
         }
     }
 

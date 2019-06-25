@@ -3,6 +3,7 @@
             xmlns:commons="http://www.99bill.com/schema/asap/commons" xmlns="http://www.99bill.com/schema/asap/strategy"
             xsi:schemaLocation="http://www.99bill.com/schema/asap/strategy http://www.99bill.com/schema/asap/strategy.xsd
 http://www.99bill.com/schema/asap/commons http://www.99bill.com/schema/asap/commons.xsd">
+    <!-- 闪金总后台1 -->
     <!--快花花快钱配置-->
     <strategy>
         <mpf>
@@ -102,39 +103,6 @@ http://www.99bill.com/schema/asap/commons http://www.99bill.com/schema/asap/comm
             </mpf-keystore>
         </key-strategy>
     </strategy>
-    <!--小鲸鱼快钱配置-->
-    <strategy>
-        <mpf>
-            <!-- 商户会员号 -->
-            <commons:member-code>10210729994</commons:member-code>
-            <!-- 策略编码，固定值 F41-->
-            <commons:feature-code>F41</commons:feature-code>
-        </mpf>
-        <crypto-strategy>
-            <type>signatureAndCrypto</type>
-            <available>true</available>
-            <algorithm-set>
-                <signature-alg>SHA1withRSA</signature-alg>
-                <symmetric-alg>AES/CBC/PKCS5Padding</symmetric-alg>
-                <asymmetric-alg>RSA/ecb/pkcs1Padding</asymmetric-alg>
-            </algorithm-set>
-        </crypto-strategy>
-        <key-strategy>
-            <!-- 快钱公钥路径-->
-            <bill99-public-key-file-path>kuaiqian/cer/99bill.cert.rsa.20340630.cer</bill99-public-key-file-path>
-            <mpf-keystore>
-                <!-- 商户私钥路径-->
-                <path>kuaiqian/parva/parva-rsa.pfx</path>
-                <key-store-type>PKCS12</key-store-type>
-                <!-- 商户私钥密码-->
-                <key-store-password>parva123</key-store-password>
-                <!-- 商户私钥别名-->
-                <alias>test-alias</alias>
-                <!-- 商户私钥密码-->
-                <key-password>parva123</key-password>
-            </mpf-keystore>
-        </key-strategy>
-    </strategy>
     <!--贷贷有财快钱配置-->
     <strategy>
         <mpf>
@@ -168,7 +136,9 @@ http://www.99bill.com/schema/asap/commons http://www.99bill.com/schema/asap/comm
             </mpf-keystore>
         </key-strategy>
     </strategy>
-    <!--小飞机快钱配置-->
+
+    <!--闪金总后台2-->
+    <!--小灰机快钱配置-->
     <strategy>
         <mpf>
             <!-- 商户会员号 -->
@@ -231,6 +201,74 @@ http://www.99bill.com/schema/asap/commons http://www.99bill.com/schema/asap/comm
                 <alias>test-alias</alias>
                 <!-- 商户私钥密码-->
                 <key-password>oxen123</key-password>
+            </mpf-keystore>
+        </key-strategy>
+    </strategy>
+    <!--宝宝来钱快钱配置-->
+    <strategy>
+        <mpf>
+            <!-- 商户会员号 -->
+            <commons:member-code>10210741987</commons:member-code>
+            <!-- 策略编码，固定值 F41-->
+            <commons:feature-code>F41</commons:feature-code>
+        </mpf>
+        <crypto-strategy>
+            <type>signatureAndCrypto</type>
+            <available>true</available>
+            <algorithm-set>
+                <signature-alg>SHA1withRSA</signature-alg>
+                <symmetric-alg>AES/CBC/PKCS5Padding</symmetric-alg>
+                <asymmetric-alg>RSA/ecb/pkcs1Padding</asymmetric-alg>
+            </algorithm-set>
+        </crypto-strategy>
+        <key-strategy>
+            <!-- 快钱公钥路径-->
+            <bill99-public-key-file-path>kuaiqian/cer/99bill.cert.rsa.20340630.cer</bill99-public-key-file-path>
+            <mpf-keystore>
+                <!-- 商户私钥路径-->
+                <path>kuaiqian/baby/baby-rsa.pfx</path>
+                <key-store-type>PKCS12</key-store-type>
+                <!-- 商户私钥密码-->
+                <key-store-password>baby123</key-store-password>
+                <!-- 商户私钥别名-->
+                <alias>test-alias</alias>
+                <!-- 商户私钥密码-->
+                <key-password>baby123</key-password>
+            </mpf-keystore>
+        </key-strategy>
+    </strategy>
+
+    <!--小鲸鱼总后台-->
+    <!--小鲸鱼快钱配置-->
+    <strategy>
+        <mpf>
+            <!-- 商户会员号 -->
+            <commons:member-code>10210729994</commons:member-code>
+            <!-- 策略编码，固定值 F41-->
+            <commons:feature-code>F41</commons:feature-code>
+        </mpf>
+        <crypto-strategy>
+            <type>signatureAndCrypto</type>
+            <available>true</available>
+            <algorithm-set>
+                <signature-alg>SHA1withRSA</signature-alg>
+                <symmetric-alg>AES/CBC/PKCS5Padding</symmetric-alg>
+                <asymmetric-alg>RSA/ecb/pkcs1Padding</asymmetric-alg>
+            </algorithm-set>
+        </crypto-strategy>
+        <key-strategy>
+            <!-- 快钱公钥路径-->
+            <bill99-public-key-file-path>kuaiqian/cer/99bill.cert.rsa.20340630.cer</bill99-public-key-file-path>
+            <mpf-keystore>
+                <!-- 商户私钥路径-->
+                <path>kuaiqian/parva/parva-rsa.pfx</path>
+                <key-store-type>PKCS12</key-store-type>
+                <!-- 商户私钥密码-->
+                <key-store-password>parva123</key-store-password>
+                <!-- 商户私钥别名-->
+                <alias>test-alias</alias>
+                <!-- 商户私钥密码-->
+                <key-password>parva123</key-password>
             </mpf-keystore>
         </key-strategy>
     </strategy>
