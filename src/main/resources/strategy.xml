@@ -136,8 +136,8 @@
     <!--</key-strategy>-->
     <!--</strategy>-->
 
-    <!--&lt;!&ndash;闪金总后台2&ndash;&gt;-->
-    <!--&lt;!&ndash;小灰机快钱配置&ndash;&gt;-->
+    <!--闪金总后台2-->
+    <!--小灰机快钱配置-->
     <!--<strategy>-->
     <!--<mpf>-->
     <!--&lt;!&ndash; 商户会员号 &ndash;&gt;-->
@@ -237,8 +237,8 @@
     <!--</key-strategy>-->
     <!--</strategy>-->
 
-    <!--&lt;!&ndash;小鲸鱼总后台&ndash;&gt;-->
-    <!--&lt;!&ndash;小鲸鱼快钱配置&ndash;&gt;-->
+    <!--小鲸鱼总后台-->
+    <!--小鲸鱼快钱配置-->
     <!--<strategy>-->
     <!--<mpf>-->
     <!--&lt;!&ndash; 商户会员号 &ndash;&gt;-->
