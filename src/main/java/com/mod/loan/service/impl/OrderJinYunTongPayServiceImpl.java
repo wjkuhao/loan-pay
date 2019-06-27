@@ -325,6 +325,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             Order order1 = new Order();
             order1.setId(order.getId());
             order1.setArriveTime(new Date());
+            order1.setUpdateTime(new Date());
             Date repayTime = new DateTime(order1.getArriveTime()).plusDays(order.getBorrowDay() - 1).toDate();
             order1.setRepayTime(repayTime);
             order1.setStatus(31);
@@ -354,6 +355,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             Order order1 = new Order();
             order1.setId(order.getId());
             order1.setArriveTime(new Date());
+            order1.setUpdateTime(new Date());
             Date repayTime = new DateTime(order1.getArriveTime()).plusDays(order.getBorrowDay() - 1).toDate();
             order1.setRepayTime(repayTime);
             order1.setStatus(31);
@@ -381,6 +383,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
             Order order1 = new Order();
             order1.setId(orderPay.getOrderId());
+            order1.setUpdateTime(new Date());
             order1.setStatus(23);
 
             OrderPay orderPay1 = new OrderPay();
@@ -401,6 +404,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         if (orderPay.getPayStatus() == 1) {// 只处理受理中的状态
             Order order1 = new Order();
             order1.setId(orderPay.getOrderId());
+            order1.setUpdateTime(new Date());
             order1.setStatus(23);
 
             OrderPay orderPay1 = new OrderPay();

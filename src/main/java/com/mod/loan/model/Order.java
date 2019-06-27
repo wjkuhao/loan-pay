@@ -115,6 +115,12 @@ public class Order {
     private Date auditTime;
 
     /**
+     * 更新时间
+     */
+    @Column(name = "update_time")
+    private Date updateTime;
+
+    /**
      * 到账时间
      */
     @Column(name = "arrive_time")
@@ -548,5 +554,13 @@ public class Order {
 
     public void setInterestFee(BigDecimal interestFee) {
         this.interestFee = interestFee;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
     }
 }

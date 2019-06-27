@@ -124,6 +124,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 orderPay.setPayStatus(2);
                 Order record = new Order();
                 record.setId(order.getId());
+                record.setUpdateTime(new Date());
                 record.setStatus(23);
                 orderService.updatePayInfo(record, orderPay);
 
@@ -230,6 +231,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             Order order1 = new Order();
             order1.setId(order.getId());
             order1.setArriveTime(new Date());
+            order1.setUpdateTime(new Date());
             Date repayTime = new DateTime(order1.getArriveTime()).plusDays(order.getBorrowDay() - 1).toDate();
             order1.setRepayTime(repayTime);
             order1.setStatus(31);
@@ -257,6 +259,7 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         if (orderPay.getPayStatus() == 1) {// 只处理受理中的状态
             Order order1 = new Order();
             order1.setId(orderPay.getOrderId());
+            order1.setUpdateTime(new Date());
             order1.setStatus(23);
 
             OrderPay orderPay1 = new OrderPay();

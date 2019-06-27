@@ -166,6 +166,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 Order record = new Order();
                 record.setId(order.getId());
                 record.setStatus(23);
+                record.setUpdateTime(new Date());
                 orderService.updatePayInfo(record, orderPay);
                 redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
 
@@ -231,6 +232,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 Order record = new Order();
                 record.setId(order.getId());
                 record.setStatus(23);
+                record.setUpdateTime(new Date());
                 orderService.updatePayInfo(record, orderPay);
                 redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
 
@@ -329,6 +331,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     Order record = new Order();
                     record.setId(order.getId());
                     record.setStatus(23);
+                    record.setUpdateTime(new Date());
                     orderService.updatePayInfo(record, orderPay);
                 }
             } else {
@@ -432,6 +435,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 Order record = new Order();
                 record.setId(order.getId());
                 record.setStatus(23);
+                record.setUpdateTime(new Date());
                 orderService.updatePayInfo(record, orderPay);
             }
         } catch (Exception e) {
@@ -838,6 +842,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 Order record = new Order();
                 record.setId(order.getId());
                 record.setStatus(23);
+                record.setUpdateTime(new Date());
                 orderService.updatePayInfo(record, orderPay);
                 redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
             }
@@ -884,6 +889,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
     public boolean checkPayCondition(Order order) {
         if (order.getBorrowMoney().compareTo(new BigDecimal(Constant.MERCHANT_MAX_PRODUCT_MONEY)) > 0) {
             order.setStatus(23);
+            order.setUpdateTime(new Date());
             logger.error("代付检查异常:orderid={},放款金额={}", order.getId(), order.getBorrowMoney());
             sendSmsMessage(order.getMerchant(), "代付检查异常:放款金额大于" + Constant.MERCHANT_MAX_PRODUCT_MONEY);
             orderService.updateByPrimaryKeySelective(order);
@@ -893,6 +899,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         int count = orderService.countOrderPaySuccessOneDay(order.getUid());
         if (count > 1) {
             order.setStatus(23);
+            order.setUpdateTime(new Date());
             logger.error("代付检查异常:orderid={},一天重复放款={}", order.getId(), order.getBorrowMoney());
             sendSmsMessage(order.getMerchant(), "代付检查异常:一天重复放款");
             orderService.updateByPrimaryKeySelective(order);
@@ -908,6 +915,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             Order order1 = new Order();
             order1.setId(order.getId());
             order1.setArriveTime(new Date());
+            order1.setUpdateTime(new Date());
             Date repayTime = new DateTime(order1.getArriveTime()).plusDays(order.getBorrowDay() - 1).toDate();
             order1.setRepayTime(repayTime);
             order1.setStatus(31);
@@ -931,6 +939,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         if (orderPay.getPayStatus() == 1) {// 只处理受理中的状态
             Order order1 = new Order();
             order1.setId(orderPay.getOrderId());
+            order1.setUpdateTime(new Date());
             order1.setStatus(23);
 
             OrderPay orderPay1 = new OrderPay();
@@ -956,6 +965,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         if (orderPay.getPayStatus() == 2) {// 只处理受理失败的状态
             Order order1 = new Order();
             order1.setId(orderPay.getOrderId());
+            order1.setUpdateTime(new Date());
             order1.setStatus(23);
 
             OrderPay orderPay1 = new OrderPay();
