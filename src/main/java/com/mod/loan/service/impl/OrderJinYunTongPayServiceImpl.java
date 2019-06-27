@@ -110,122 +110,122 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
     @Override
     public void pay(OrderPayMessage payMessage) {
         log.info("#[金运通订单放款]-[开始]-payMessage={}", JSONObject.toJSON(payMessage));
+
+        //查询待放款订单信息
+        Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
+        if (order == null) {
+            log.error("金运通打款订单不存在,orderId={}", payMessage.getOrderId());
+            return;
+        }
+        log.info("#[金运通查询待放款订单信息]-order={}", JSONObject.toJSON(order));
+        //放款中的订单才能放款
+        if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
+            log.info("该订单的状态不是放款中,orderId={}", order.getId());
+            return;
+        }
+        //获取商户信息
+        Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
+        if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey())) {
+            log.error("#[该订单的商户信息异常]-orderId={}", payMessage.getOrderId());
+            return;
+        }
+        //获取该订单的银行卡号信息
+        UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
+        if (userBank == null) {
+            log.error("该订单的用户银行卡为空,orderId={}", order.getId());
+        }
+        log.info("#[获取该订单的银行卡号信息]-userBank={}", JSONObject.toJSON(userBank));
+        //获取用户信息
+        User user = userService.selectByPrimaryKey(order.getUid());
+        String amount = order.getActualMoney().toString();
+        if ("dev".equals(Constant.ENVIROMENT)) {
+            amount = "0.01";
+        }
+
+        RSAHelper rsaHelper = getRSAHelper(merchant.getJinyuntongMerchantId(), merchant.getJinyuntongMerchantPrivateKey(), merchant.getJinyuntongPublicKey());
+        if (rsaHelper == null) {
+            return;
+        }
+        //唯一流水号
+        String seriesNo = "p" + (TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6));
+        TC1002_ReqBodyBean reqBean = new TC1002_ReqBodyBean();
+        reqBean.setAccountName(user.getUserName());
+        reqBean.setAccountNo(userBank.getCardNo());
+        reqBean.setAccountType(AccoutTypeEnums.PERSON.getCode());
+        reqBean.setBankName(userBank.getCardName());
+        reqBean.setBsnCode(PayBsnTypeEnums.BSN_PAY_09400.getCode());
+        reqBean.setCertNo(userBank.getCardNo());
+        reqBean.setCertType(CertTypeEnums.IDCARD.getCode());
+        reqBean.setCurrency(CurrencyTypeEnums.CNY.getCode());
+        reqBean.setMerViralAcct("");
+        reqBean.setMobile(userBank.getCardPhone());
+        reqBean.setRemark("");
+        reqBean.setBrachBankCity("");
+        reqBean.setBrachBankName("");
+        reqBean.setBrachBankProvince("");
+        reqBean.setAgrtNo("");
+        reqBean.setTranAmt(new BigDecimal(amount));
+        reqBean.setReserve("");
+        reqBean.setBrachBankCode(userBank.getCardCode());
+        MsgHeadInfoV2 head = getHeadInfo(payTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", seriesNo);
+        JSONObject jo = new JSONObject();
+        jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
+        jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
+
+        //落支付记录
+        OrderPay orderPay = new OrderPay();
+        orderPay.setPayNo(seriesNo);
+        orderPay.setUid(order.getUid());
+        orderPay.setOrderId(order.getId());
+        orderPay.setPayMoney(new BigDecimal(amount).setScale(2, BigDecimal.ROUND_HALF_UP));
+        orderPay.setPayType(MerchantEnum.jinyuntong.getCode());
+        orderPay.setBank(userBank.getCardName());
+        orderPay.setBankNo(userBank.getCardNo());
+        orderPay.setCreateTime(new Date());
+        orderPay.setUpdateTime(new Date());
+        orderPay.setPayStatus(0);
+        orderPayMapper.insertSelective(orderPay);
         try {
-            //查询待放款订单信息
-            Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
-            if (order == null) {
-                log.error("金运通打款订单不存在,orderId={}", payMessage.getOrderId());
+            String mac = signMsg(jo.toJSONString(), rsaHelper);
+            if (mac == null) {
                 return;
             }
-            log.info("#[金运通查询待放款订单信息]-order={}", JSONObject.toJSON(order));
-            //放款中的订单才能放款
-            if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
-                log.info("该订单的状态不是放款中,orderId={}", order.getId());
+            String respStr = sendMsg(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
+            log.info("金运通打款返回信息:" + respStr);
+            if (respStr == null) {
                 return;
             }
-            //获取商户信息
-            Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
-            if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey())) {
-                log.error("#[该订单的商户信息异常]-orderId={}", payMessage.getOrderId());
-                return;
+            JSONObject json = JSONObject.parseObject(respStr);
+            String respCode = json.getJSONObject("head").get("respCode").toString();
+            String tranState = json.getJSONObject("body").get("tranState").toString();
+            if ("S0000000".equals(respCode) && "01".equals(tranState)) {
+                //TODO 交易成功
+                log.info("金运通打款成功,payNo={},orderId={}", seriesNo, order.getId());
+                paySyncSuccess(seriesNo);
+            } else if (!respCode.equals("E0000000") && respCode.startsWith("E") && "03".equals(tranState)) {
+                //TODO 交易失败
+                log.info("金运通打款失败,payNo={},orderId={}", seriesNo, order.getId());
+                paySyncFail(seriesNo, json.getJSONObject("head").getString("respDesc"));
+            } else {
+                //TODO 交易处理中
+                log.info("金运通打款受理成功,payNo={},orderId={}", seriesNo, order.getId());
+                OrderPay orderPay1 = new OrderPay();
+                orderPay1.setPayNo(seriesNo);
+                orderPay1.setUpdateTime(new Date());
+                //受理成功,插入打款流水，不改变订单状态
+                orderPay1.setPayStatus(1);
+                orderPayMapper.updateByPrimaryKeySelective(orderPay1);
+                //受理成功，将消息存入队列，10分钟(金运通)后去查询是否放款成功
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long,
+                        new OrderPayQueryMessage(seriesNo, merchant.getMerchantAlias(), payMessage.getPayType()));
             }
-            //获取该订单的银行卡号信息
-            UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
-            if (userBank == null) {
-                log.error("该订单的用户银行卡为空,orderId={}", order.getId());
-            }
-            log.info("#[获取该订单的银行卡号信息]-userBank={}", JSONObject.toJSON(userBank));
-            //获取用户信息
-            User user = userService.selectByPrimaryKey(order.getUid());
-            String amount = order.getActualMoney().toString();
-            if ("dev".equals(Constant.ENVIROMENT)) {
-                amount = "0.01";
-            }
 
-            RSAHelper rsaHelper = getRSAHelper(merchant.getJinyuntongMerchantId(), merchant.getJinyuntongMerchantPrivateKey(), merchant.getJinyuntongPublicKey());
-
-            //唯一流水号
-            String seriesNo = "p" + (TimeUtils.parseTime(new Date(), TimeUtils.dateformat5) + RandomUtils.generateRandomNum(6));
-            TC1002_ReqBodyBean reqBean = new TC1002_ReqBodyBean();
-            reqBean.setAccountName(user.getUserName());
-            reqBean.setAccountNo(userBank.getCardNo());
-            reqBean.setAccountType(AccoutTypeEnums.PERSON.getCode());
-            reqBean.setBankName(userBank.getCardName());
-            reqBean.setBsnCode(PayBsnTypeEnums.BSN_PAY_09400.getCode());
-            reqBean.setCertNo(userBank.getCardNo());
-            reqBean.setCertType(CertTypeEnums.IDCARD.getCode());
-            reqBean.setCurrency(CurrencyTypeEnums.CNY.getCode());
-            reqBean.setMerViralAcct("");
-            reqBean.setMobile(userBank.getCardPhone());
-            reqBean.setRemark("");
-            reqBean.setBrachBankCity("");
-            reqBean.setBrachBankName("");
-            reqBean.setBrachBankProvince("");
-            reqBean.setAgrtNo("");
-            reqBean.setTranAmt(new BigDecimal(amount));
-            reqBean.setReserve("");
-            reqBean.setBrachBankCode(userBank.getCardCode());
-            MsgHeadInfoV2 head = getHeadInfo(payTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", seriesNo);
-            JSONObject jo = new JSONObject();
-            jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
-            jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
-
-            //落支付记录
-            OrderPay orderPay = new OrderPay();
-            orderPay.setPayNo(seriesNo);
-            orderPay.setUid(order.getUid());
-            orderPay.setOrderId(order.getId());
-            orderPay.setPayMoney(new BigDecimal(amount).setScale(2, BigDecimal.ROUND_HALF_UP));
-            orderPay.setPayType(MerchantEnum.jinyuntong.getCode());
-            orderPay.setBank(userBank.getCardName());
-            orderPay.setBankNo(userBank.getCardNo());
-            orderPay.setCreateTime(new Date());
-            orderPay.setUpdateTime(new Date());
-            orderPay.setPayStatus(0);
-            orderPayMapper.insertSelective(orderPay);
-            try {
-                String mac = signMsg(jo.toJSONString(), rsaHelper);
-
-                String respStr = sendMsg(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
-                log.info("金运通打款返回信息:" + respStr);
-                JSONObject json = JSONObject.parseObject(respStr);
-                System.out.println(json.getJSONObject("head"));//报文头内容
-                System.out.println(json.getJSONObject("body"));//报文体
-                String respCode = json.getJSONObject("head").get("respCode").toString();
-                System.out.println(respCode);
-                String tranState = json.getJSONObject("body").get("tranState").toString();
-                System.out.println(tranState);
-                if ("S0000000".equals(respCode) && "01".equals(tranState)) {
-                    //TODO 交易成功
-                    log.info("金运通打款成功,payNo={},orderId={}", seriesNo, order.getId());
-                    paySyncSuccess(seriesNo);
-                } else if (!respCode.equals("E0000000") && respCode.startsWith("E") && "03".equals(tranState)) {
-                    //TODO 交易失败
-                    log.info("金运通打款失败,payNo={},orderId={}", seriesNo, order.getId());
-                    paySyncFail(seriesNo, json.getJSONObject("head").getString("respDesc"));
-                } else {
-                    //TODO 交易处理中
-                    log.info("金运通打款受理成功,payNo={},orderId={}", seriesNo, order.getId());
-                    OrderPay orderPay1 = new OrderPay();
-                    orderPay1.setPayNo(seriesNo);
-                    orderPay1.setUpdateTime(new Date());
-                    //受理成功,插入打款流水，不改变订单状态
-                    orderPay1.setPayStatus(1);
-                    orderPayMapper.updateByPrimaryKeySelective(orderPay1);
-                    //受理成功，将消息存入队列，10分钟(金运通)后去查询是否放款成功
-                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long,
-                            new OrderPayQueryMessage(seriesNo, merchant.getMerchantAlias(), payMessage.getPayType()));
-                }
-
-            } catch (Exception e) {
-                log.error("调用金运通打款失败,e={}", e);
-                paySyncFail(seriesNo, e.getMessage());
-                return;
-            }
-            log.info("#[金运通订单放款]-[结束]");
         } catch (Exception e) {
-            log.error("#[金运通订单放款]-[异常]-e={}", e);
+            log.error("调用金运通打款失败,e={}", e);
+            paySyncFail(seriesNo, e.getMessage());
+            return;
         } finally {
+            log.info("#[金运通订单放款]-[结束]");
             // 释放锁
             redisMapper.unlock(RedisConst.ORDER_LOCK + payMessage.getOrderId());
         }
@@ -239,52 +239,60 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
      */
     @Override
     public void payQuery(OrderPayQueryMessage payQueryMessage) {
+
+        log.info("#[金运通订单放款结果查询]-[开始]-payResultMessage={}", JSONObject.toJSON(payQueryMessage));
+        //放款流水号
+        String payNo = payQueryMessage.getPayNo();
+        //根据放款流水号查询放款流水记录
+        OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
+        if (null == orderPay) {
+            log.info("根据放款流水号查询放款流水记录为空-payNo={}", payNo);
+            return;
+        }
+        //查询待放款订单信息
+        Order order = orderService.selectByPrimaryKey(orderPay.getOrderId());
+        if (order == null) {
+            log.error("订单不存在,orderId={}", orderPay.getOrderId());
+            return;
+        }
+        log.info("#[查询待放款订单信息]-order={}", JSONObject.toJSON(order));
+        //放款中的订单才能放款
+        if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
+            log.info("该订单的状态不是放款中");
+            return;
+        }
+        //获取商户信息
+        Merchant merchant = merchantService.findMerchantByAlias(payQueryMessage.getMerchantAlias());
+        if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey())) {
+            log.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
+            return;
+        }
+
+        TC2002_ReqBodyBean reqBean = new TC2002_ReqBodyBean();
+        reqBean.setOriTranFlowid(payNo);
+        RSAHelper rsaHelper = getRSAHelper(merchant.getJinyuntongMerchantId(), merchant.getJinyuntongMerchantPrivateKey(), merchant.getJinyuntongPublicKey());
+        if (rsaHelper == null) {
+            return;
+        }
+        //            String merOrderId = getTranFlow();
+        MsgHeadInfoV2 head = getHeadInfo(payQueryTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", payNo);
+        JSONObject jo = new JSONObject();
+        jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
+        jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
         try {
-            log.info("#[金运通订单放款结果查询]-[开始]-payResultMessage={}", JSONObject.toJSON(payQueryMessage));
-            //放款流水号
-            String payNo = payQueryMessage.getPayNo();
-            //根据放款流水号查询放款流水记录
-            OrderPay orderPay = orderPayService.selectByPrimaryKey(payNo);
-            if (null == orderPay) {
-                log.info("根据放款流水号查询放款流水记录为空-payNo={}", payNo);
-                return;
-            }
-            //查询待放款订单信息
-            Order order = orderService.selectByPrimaryKey(orderPay.getOrderId());
-            log.info("#[查询待放款订单信息]-order={}", JSONObject.toJSON(order));
-            //放款中的订单才能放款
-            if (!OrderEnum.LOANING.getCode().equals(order.getStatus())) {
-                log.info("该订单的状态不是放款中");
-                return;
-            }
-            //获取商户信息
-            Merchant merchant = merchantService.findMerchantByAlias(payQueryMessage.getMerchantAlias());
-            if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey())) {
-                log.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
-                return;
-            }
-
-            TC2002_ReqBodyBean reqBean = new TC2002_ReqBodyBean();
-            reqBean.setOriTranFlowid(payNo);
-            RSAHelper rsaHelper = getRSAHelper(merchant.getJinyuntongMerchantId(), merchant.getJinyuntongMerchantPrivateKey(), merchant.getJinyuntongPublicKey());
-//            String merOrderId = getTranFlow();
-            MsgHeadInfoV2 head = getHeadInfo(payQueryTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", payNo);
-            JSONObject jo = new JSONObject();
-            jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
-            jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
             String mac = signMsg(jo.toJSONString(), rsaHelper);
-
+            if (mac == null) {
+                return;
+            }
             String respStr = sendMsg(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
+            if (respStr == null) {
+                return;
+            }
             JSONObject json = JSONObject.parseObject(respStr);
-            System.out.println(json.getJSONObject("head"));//报文头内容
-            System.out.println(json.getJSONObject("body"));//报文体
             String respCode = json.getJSONObject("head").get("respCode").toString();
-            System.out.println(respCode);
             String tranRespCode = json.getJSONObject("body").get("tranRespCode").toString();
-            System.out.println(tranRespCode);
             String tranState = json.getJSONObject("body").get("tranState").toString();
             String remark = json.getJSONObject("body").getString("tranRespDesc");
-            System.out.println(tranState);
             if ("S0000000".equals(respCode)) {
                 //查询成功
                 if ("S0000000".equals(tranRespCode) && "01".equals(tranState)) {
@@ -320,7 +328,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             return rsaHelper;
         } catch (Exception e) {
             log.error("金运通生成rsakey异常,merchantId={},e={}", merchantId, e);
-            throw new AppException("金运通生成rsakey异常");
+            return null;
         }
     }
 
@@ -418,7 +426,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             orderService.updatePayCallbackInfo(order1, orderPay1);
             redisMapper.unlock(RedisConst.ORDER_LOCK + orderPay.getOrderId());
         } else {
-            log.error("查询代付结果异常,payNo={}", payNo);
+            log.error("查询代付结果异常,打款不是受理中,payNo={}", payNo);
         }
     }
 
@@ -458,7 +466,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         return hexSign;
     }
 
-    public String sendMsg(String xml, String sign, String merchantId, RSAHelper rsaHelper) throws Exception {
+    public String sendMsg(String xml, String sign, String merchantId, RSAHelper rsaHelper) {
         log.info("金运通上送报文：" + xml);
         log.info("金运通上送签名：" + sign);
 
@@ -477,15 +485,14 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
 
             if (res == null) {
                 log.error("金运通服务器连接失败");
-
-                throw new AppException("测试异常");
+                return null;
             } else {
                 log.info("金运通连接服务器成功,返回结果:" + res);
             }
 
         } catch (Exception e) {
             log.error("发送请求异常:" + e);
-            throw new AppException("测试异常");
+            return null;
         }
 
         String[] respMsg = res.split(RESP_MSG_PARAM_SEPARATOR);
@@ -499,9 +506,9 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
 
         String respXml = decrytXml(respXmlEnc, respKey);
 
-        System.out.println("返回报文merchantId:" + merchantId1);
-        System.out.println("返回报文XML:" + respXml);
-        System.out.println("返回报文签名:" + respSign);
+        log.info("返回报文merchantId:" + merchantId1);
+        log.info("返回报文XML:" + respXml);
+        log.info("返回报文签名:" + respSign);
 
         Assert.assertTrue("返回报文校验失败", verifyMsgSign(respXml, respSign, rsaHelper));
 
@@ -524,7 +531,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
     public String encryptXml(String xml, byte[] key) {
 
         String enc_xml = CryptoUtils.desEncryptToHex(xml, key);
-        System.out.println("xml密文：" + enc_xml);
+        log.info("xml密文：" + enc_xml);
 
         return enc_xml;
     }
@@ -544,7 +551,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         }
 
         String hex_key = StringUtil.bytesToHexString(enc_key);
-        System.out.println("密钥密文:" + hex_key);
+        log.info("密钥密文:" + hex_key);
 
         return hex_key;
     }
