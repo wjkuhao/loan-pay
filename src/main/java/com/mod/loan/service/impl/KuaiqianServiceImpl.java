@@ -171,22 +171,28 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
         //结束时间 必填  结束-开始<=7天
         payOrder.setEndDate(TimeUtils.parseTime(TimeUtils.getTomorrow(), TimeUtils.dateformat1));
         String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
-        //生成pki加密报文
-        String pkiMsg = KuaiqianHttpUtil.genPayQueryPKIMsg(orderXml, merchant.getKqMerchantCode());
-        Pay2bankSearchResult pay2bankResult = new Pay2bankSearchResult();
+        // 查询结果bean
+        Pay2bankSearchResult pay2bankResult = null;
         try {
+            //生成pki加密报文
+            String pkiMsg = KuaiqianHttpUtil.genPayQueryPKIMsg(orderXml, merchant.getKqMerchantCode());
             //获取请求响应的加密数据
             String sealMsg = KuaiqianHttpUtil.invokeCSSCollection(pkiMsg, kuaiqian_pay_query_url);
             //返回的加密报文解密
             pay2bankResult = KuaiqianHttpUtil.unsealMsgPayQuery(sealMsg, merchant.getKqMerchantCode());
         } catch (Exception e) {
             logger.error("快钱查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
-            logger.error("快钱查询代付结果异常", e);
+            logger.error("快钱查询代付结果异常, error = {}", e);
+        }
+        // 检查响应是否成功
+        if (null == pay2bankResult) {
             payResultMessage.setTimes(payResultMessage.getTimes() + 1);
             if (payResultMessage.getTimes() < 6) {
-                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
             }
+            return;
         }
+        //
         List<Pay2bankSearchDetail> list = pay2bankResult.getResultList();
         //快钱那边处于处理中的订单，需要跟银行对账确认
         if (list == null) {
