@@ -149,66 +149,71 @@ public class KuaiqianServiceImpl extends BaseServiceImpl<OrderPay, String> imple
 
     @Override
     public void kuaiqianPayQuery(OrderPayQueryMessage payResultMessage) {
-        try {
-            String payNo = payResultMessage.getPayNo();
-            Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
-            //已经打款成功的订单不需要在查询
-            Map order = orderService.selectOrderByPayNoAndAlias(payNo, merchant.getMerchantAlias());
-            if (MapUtils.isNotEmpty(order) && (MapUtils.getIntValue(order, "status") >= 41
-                    && MapUtils.getIntValue(order, "status") <= 43)) {
-                logger.info("快钱订单已放款成功");
-                return;
-            }
+        String payNo = payResultMessage.getPayNo();
+        Merchant merchant = merchantService.findMerchantByAlias(payResultMessage.getMerchantAlias());
+        //已经打款成功的订单不需要在查询
+        Map order = orderService.selectOrderByPayNoAndAlias(payNo, merchant.getMerchantAlias());
+        if (MapUtils.isNotEmpty(order) && (MapUtils.getIntValue(order, "status") >= 41
+                && MapUtils.getIntValue(order, "status") <= 43)) {
+            logger.info("快钱订单已放款成功");
+            return;
+        }
 
-            Pay2bankSearchRequestParam payOrder = new Pay2bankSearchRequestParam();
-            //页码 必填 正整数
-            payOrder.setTargetPage("1");
-            //每页条数  必填  1-20  正整数
-            payOrder.setPageSize("20");
-            //商家订单号
-            payOrder.setOrderId(payNo);
-            //开始时间 必填
-            payOrder.setStartDate(TimeUtils.parseTime(TimeUtils.getYesterday(), TimeUtils.dateformat1));
-            //结束时间 必填  结束-开始<=7天
-            payOrder.setEndDate(TimeUtils.parseTime(TimeUtils.getTomorrow(), TimeUtils.dateformat1));
-            String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
-            //生成pki加密报文
-            String pkiMsg = KuaiqianHttpUtil.genPayQueryPKIMsg(orderXml, merchant.getKqMerchantCode());
+        Pay2bankSearchRequestParam payOrder = new Pay2bankSearchRequestParam();
+        //页码 必填 正整数
+        payOrder.setTargetPage("1");
+        //每页条数  必填  1-20  正整数
+        payOrder.setPageSize("20");
+        //商家订单号
+        payOrder.setOrderId(payNo);
+        //开始时间 必填
+        payOrder.setStartDate(TimeUtils.parseTime(TimeUtils.getYesterday(), TimeUtils.dateformat1));
+        //结束时间 必填  结束-开始<=7天
+        payOrder.setEndDate(TimeUtils.parseTime(TimeUtils.getTomorrow(), TimeUtils.dateformat1));
+        String orderXml = XmlUtils.convertToXml(payOrder, "UTF-8");
+        //生成pki加密报文
+        String pkiMsg = KuaiqianHttpUtil.genPayQueryPKIMsg(orderXml, merchant.getKqMerchantCode());
+        Pay2bankSearchResult pay2bankResult = new Pay2bankSearchResult();
+        try {
             //获取请求响应的加密数据
             String sealMsg = KuaiqianHttpUtil.invokeCSSCollection(pkiMsg, kuaiqian_pay_query_url);
             //返回的加密报文解密
-            Pay2bankSearchResult pay2bankResult = KuaiqianHttpUtil.unsealMsgPayQuery(sealMsg, merchant.getKqMerchantCode());
-            List<Pay2bankSearchDetail> list = pay2bankResult.getResultList();
-            //快钱那边处于处理中的订单，需要跟银行对账确认
-            if (list == null) {
-                logger.info("#[快钱查询代付结果]-[需要快钱跟银行确认]-payNo={}", payNo);
-                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
-                return;
-            }
-            String msg = pay2bankResult.getResultList().get(0).getErrorMsg();
-            String state = pay2bankResult.getResultList().get(0).getStatus();
-            //交易处理中，继续查询
-            if ("101".equals(state)) {
-                payResultMessage.setTimes(payResultMessage.getTimes() + 1);
-                if (payResultMessage.getTimes() < 6) {
-                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
-                } else {
-                    logger.info("查询订单,payResultMessage={},快钱返回结果={},resultMsg={}",
-                            JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult), msg);
-                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
-                }
-                // 交易成功
-            } else if ("111".equals(state)) {
-                logger.info("快钱放款成功");
-                paySuccess(payNo);
-                // 交易失败
-            } else {
-                logger.error("快钱放款失败,payResultMessage={},快钱返回结果={}", JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult));
-                payFail(payNo, msg);
-            }
+            pay2bankResult = KuaiqianHttpUtil.unsealMsgPayQuery(sealMsg, merchant.getKqMerchantCode());
         } catch (Exception e) {
             logger.error("快钱查询代付结果异常，payResultMessage={}", JSON.toJSONString(payResultMessage));
             logger.error("快钱查询代付结果异常", e);
+            payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+            if (payResultMessage.getTimes() < 6) {
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+            }
+        }
+        List<Pay2bankSearchDetail> list = pay2bankResult.getResultList();
+        //快钱那边处于处理中的订单，需要跟银行对账确认
+        if (list == null) {
+            logger.info("#[快钱查询代付结果]-[需要快钱跟银行确认]-payNo={}", payNo);
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+            return;
+        }
+        String msg = pay2bankResult.getResultList().get(0).getErrorMsg();
+        String state = pay2bankResult.getResultList().get(0).getStatus();
+        //交易处理中，继续查询
+        if ("101".equals(state)) {
+            payResultMessage.setTimes(payResultMessage.getTimes() + 1);
+            if (payResultMessage.getTimes() < 6) {
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait, payResultMessage);
+            } else {
+                logger.info("查询订单,payResultMessage={},快钱返回结果={},resultMsg={}",
+                        JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult), msg);
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payResultMessage);
+            }
+            // 交易成功
+        } else if ("111".equals(state)) {
+            logger.info("快钱放款成功");
+            paySuccess(payNo);
+            // 交易失败
+        } else {
+            logger.error("快钱放款失败,payResultMessage={},快钱返回结果={}", JSON.toJSONString(payResultMessage), JSONObject.toJSON(pay2bankResult));
+            payFail(payNo, msg);
         }
     }
 
