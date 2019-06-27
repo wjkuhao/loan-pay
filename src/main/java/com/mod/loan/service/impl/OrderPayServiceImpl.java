@@ -206,8 +206,8 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             orderPay.setCreateTime(new Date());
             OrderResVo resVo = null;
             logger.info("hlbEntrustedCuid:{}", userBank.getHlbEntrustedCuid());
-            //用户已完成委托代付注册
-            if (StringUtils.isNotEmpty(userBank.getHlbEntrustedCuid())) {
+            //用户未完成委托代付注册
+            if (StringUtils.isEmpty(userBank.getHlbEntrustedCuid())) {
                 resVo = helipayEntrustedPayService.bindUserCardPay(payNo, user, userBank, order, merchant);
             } else {
                 resVo = helipayEntrustedPayService.entrustedPay(payNo, amount, user, userBank, merchant);
@@ -827,6 +827,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "13575506440", String.valueOf(orderPay.getPayMoney())));
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "15757127746", String.valueOf(orderPay.getPayMoney())));
                     rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "18958106941", String.valueOf(orderPay.getPayMoney())));
+                    rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(order.getMerchant(), "2004", "15274029140", String.valueOf(orderPay.getPayMoney())));
                 }
 
                 logger.error("易包放款受理失败,message={}, result={}", JSON.toJSONString(payMessage),
@@ -974,7 +975,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
      */
     private void sendSmsMessage(String merchant, String msg) {
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "13979127403", msg));
-        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18072878602", msg));
+        rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "15274029140", msg));
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "15757127746", msg));
         rabbitTemplate.convertAndSend(RabbitConst.queue_sms, new QueueSmsMessage(merchant, "2004", "18958106941", msg));
     }
