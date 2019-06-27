@@ -53,37 +53,14 @@ import org.xml.sax.InputSource;
 public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService {
     private static final Logger log = LoggerFactory.getLogger(OrderJinYunTongPayServiceImpl.class);
     //地址
-    @Value("${jytpay.appUrl}")
-    private String APP_SERVER_URL;
-
-    @Value("${jytpay.respMsgParamSeparator}")
-    private String RESP_MSG_PARAM_SEPARATOR;
-    /**
-     * 返回报文merchant_id字段前缀
-     */
-    @Value("${jytpay.respMsgParamPrefixMerchantId}")
-    private String RESP_MSG_PARAM_PREFIX_MERCHANT_ID;
-    @Value("${jytpay.respMsgParamPrefixMsgEnc}")
-    private String RESP_MSG_PARAM_PREFIX_MSG_ENC;
-    /**
-     * 返回报文xml_enc字段前缀
-     */
-    @Value("${jytpay.respMsgParamPrefixXmlEnc}")
-    private String RESP_MSG_PARAM_PREFIX_XML_ENC;
-    /**
-     * 返回报文key_enc字段前缀
-     */
-    @Value("${jytpay.respMsgParamPrefixKeyEnc}")
-    private String RESP_MSG_PARAM_PREFIX_KEY_ENC;
-    /**
-     * 返回报文sign字段前缀
-     */
-    @Value("${jytpay.respMsgParamPrefixSign}")
-    private String RESP_MSG_PARAM_PREFIX_SIGN;
+    @Value("${jytpay.payAppUrl}")
+    private String payAppUrl;
     @Value("${jytpay.payTraceCode}")
     private String payTraceCode;
     @Value("${jytpay.payQueryTraceCode}")
     private String payQueryTraceCode;
+    @Value("${jytpay.payAppVersion}")
+    private String payAppVersion;
     @Autowired
     private OrderService orderService;
     @Autowired
@@ -125,7 +102,10 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         }
         //获取商户信息
         Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
-        if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey())) {
+        if (null == merchant
+                || StringUtils.isBlank(merchant.getJinyuntongMerchantId())
+                || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey())
+                || StringUtils.isBlank(merchant.getJinyuntongPublicKey())) {
             log.error("#[该订单的商户信息异常]-orderId={}", payMessage.getOrderId());
             return;
         }
@@ -133,10 +113,15 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
         if (userBank == null) {
             log.error("该订单的用户银行卡为空,orderId={}", order.getId());
+            return;
         }
         log.info("#[获取该订单的银行卡号信息]-userBank={}", JSONObject.toJSON(userBank));
         //获取用户信息
         User user = userService.selectByPrimaryKey(order.getUid());
+        if (user == null) {
+            log.error("该订单的用户为空,orderId={}", order.getId());
+            return;
+        }
         String amount = order.getActualMoney().toString();
         if ("dev".equals(Constant.ENVIROMENT)) {
             amount = "0.01";
@@ -167,7 +152,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         reqBean.setTranAmt(new BigDecimal(amount));
         reqBean.setReserve("");
         reqBean.setBrachBankCode(userBank.getCardCode());
-        MsgHeadInfoV2 head = getHeadInfo(payTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", seriesNo);
+        MsgHeadInfoV2 head = getHeadInfo(payTraceCode, merchant.getJinyuntongMerchantId(), payAppVersion, seriesNo);
         JSONObject jo = new JSONObject();
         jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
         jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
@@ -190,7 +175,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             if (mac == null) {
                 return;
             }
-            String respStr = sendMsg(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
+            String respStr = sendRequest(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
             log.info("金运通打款返回信息:" + respStr);
             if (respStr == null) {
                 return;
@@ -221,9 +206,8 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             }
 
         } catch (Exception e) {
-            log.error("调用金运通打款失败,e={}", e);
+            log.error("调用金运通打款失败,orderId={},e={}", order.getId(), e);
             paySyncFail(seriesNo, e.getMessage());
-            return;
         } finally {
             log.info("#[金运通订单放款]-[结束]");
             // 释放锁
@@ -264,7 +248,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         //获取商户信息
         Merchant merchant = merchantService.findMerchantByAlias(payQueryMessage.getMerchantAlias());
         if (null == merchant || StringUtils.isBlank(merchant.getJinyuntongMerchantId()) || StringUtils.isBlank(merchant.getJinyuntongPublicKey()) || StringUtils.isBlank(merchant.getJinyuntongMerchantPrivateKey())) {
-            log.info("#[该商户信息异常]-merchant={}", JSONObject.toJSON(merchant));
+            log.info("#[该商户信息异常]-merchant={}", payQueryMessage.getMerchantAlias());
             return;
         }
 
@@ -272,45 +256,46 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         reqBean.setOriTranFlowid(payNo);
         RSAHelper rsaHelper = getRSAHelper(merchant.getJinyuntongMerchantId(), merchant.getJinyuntongMerchantPrivateKey(), merchant.getJinyuntongPublicKey());
         if (rsaHelper == null) {
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payQueryMessage);
             return;
         }
         //            String merOrderId = getTranFlow();
-        MsgHeadInfoV2 head = getHeadInfo(payQueryTraceCode, merchant.getJinyuntongMerchantId(), "1.0.0", payNo);
+        MsgHeadInfoV2 head = getHeadInfo(payQueryTraceCode, merchant.getJinyuntongMerchantId(), payAppVersion, payNo);
         JSONObject jo = new JSONObject();
         jo.put(MsgHeadInfoV2.MSG_JSON_HEAD, head);
         jo.put(MsgHeadInfoV2.MSG_JSON_BODY, reqBean);
-        try {
-            String mac = signMsg(jo.toJSONString(), rsaHelper);
-            if (mac == null) {
-                return;
+
+        String mac = signMsg(jo.toJSONString(), rsaHelper);
+        if (mac == null) {
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payQueryMessage);
+            return;
+        }
+        String respStr = sendRequest(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
+        if (respStr == null) {
+            rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payQueryMessage);
+            return;
+        }
+        JSONObject json = JSONObject.parseObject(respStr);
+        String respCode = json.getJSONObject("head").get("respCode").toString();
+        String tranRespCode = json.getJSONObject("body").get("tranRespCode").toString();
+        String tranState = json.getJSONObject("body").get("tranState").toString();
+        String remark = json.getJSONObject("body").getString("tranRespDesc");
+        if ("S0000000".equals(respCode)) {
+            //查询成功
+            if ("S0000000".equals(tranRespCode) && "01".equals(tranState)) {
+                log.info("交易成功,orderId={}", order.getId());
+                //TODO 交易成功
+                paySuccess(payNo);
+            } else if (!tranRespCode.equals("E0000000") && tranRespCode.startsWith("E") && "03".equals(tranState)) {
+                //TODO 交易失败
+                log.info("交易失败,orderId={}", order.getId());
+                payFail(payNo, remark);
+            } else {
+                //TODO 交易处理中
+                log.info("交易处理中,orderId={}", order.getId());
+                rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payQueryMessage);
             }
-            String respStr = sendMsg(jo.toJSONString(), mac, merchant.getJinyuntongMerchantId(), rsaHelper);
-            if (respStr == null) {
-                return;
-            }
-            JSONObject json = JSONObject.parseObject(respStr);
-            String respCode = json.getJSONObject("head").get("respCode").toString();
-            String tranRespCode = json.getJSONObject("body").get("tranRespCode").toString();
-            String tranState = json.getJSONObject("body").get("tranState").toString();
-            String remark = json.getJSONObject("body").getString("tranRespDesc");
-            if ("S0000000".equals(respCode)) {
-                //查询成功
-                if ("S0000000".equals(tranRespCode) && "01".equals(tranState)) {
-                    log.info("交易成功,orderId={}", order.getId());
-                    //TODO 交易成功
-                    paySuccess(payNo);
-                } else if (!tranRespCode.equals("E0000000") && tranRespCode.startsWith("E") && "03".equals(tranState)) {
-                    //TODO 交易失败
-                    log.info("交易失败,orderId={}", order.getId());
-                    payFail(payNo, remark);
-                } else {
-                    //TODO 交易处理中
-                    log.info("交易处理中,orderId={}", order.getId());
-                    rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query_wait_long, payQueryMessage);
-                }
-            }
-        } catch (Exception e) {
-            log.error("金运通打款查询异常,e={}", e);
+        } else {
             rabbitTemplate.convertAndSend(RabbitConst.queue_order_pay_query, payQueryMessage);
         }
 
@@ -466,7 +451,13 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         return hexSign;
     }
 
-    public String sendMsg(String xml, String sign, String merchantId, RSAHelper rsaHelper) {
+    /**
+     * 发送请求
+     *
+     * @Author actor
+     * @Date 2019/6/27 10:13
+     */
+    public String sendRequest(String xml, String sign, String merchantId, RSAHelper rsaHelper) {
         log.info("金运通上送报文：" + xml);
         log.info("金运通上送签名：" + sign);
 
@@ -481,7 +472,7 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         // 获取执行结果
         String res = null;
         try {
-            res = HttpClient431Util.doPost(paramMap, APP_SERVER_URL);
+            res = HttpClient431Util.doPost(paramMap, payAppUrl);
 
             if (res == null) {
                 log.error("金运通服务器连接失败");
@@ -495,12 +486,12 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
             return null;
         }
 
-        String[] respMsg = res.split(RESP_MSG_PARAM_SEPARATOR);
+        String[] respMsg = res.split("&");
 
-        String merchantId1 = respMsg[0].substring(RESP_MSG_PARAM_PREFIX_MERCHANT_ID.length());
-        String respXmlEnc = respMsg[1].substring(RESP_MSG_PARAM_PREFIX_XML_ENC.length());
-        String respKeyEnc = respMsg[2].substring(RESP_MSG_PARAM_PREFIX_KEY_ENC.length());
-        String respSign = respMsg[3].substring(RESP_MSG_PARAM_PREFIX_SIGN.length());
+        String merchantId1 = respMsg[0].substring("merchant_id=".length());
+        String respXmlEnc = respMsg[1].substring("xml_enc=".length());
+        String respKeyEnc = respMsg[2].substring("key_enc=".length());
+        String respSign = respMsg[3].substring("sign=".length());
 
         byte respKey[] = decryptKey(respKeyEnc, rsaHelper);
 
@@ -510,8 +501,10 @@ public class OrderJinYunTongPayServiceImpl implements OrderJinYunTongPayService 
         log.info("返回报文XML:" + respXml);
         log.info("返回报文签名:" + respSign);
 
-        Assert.assertTrue("返回报文校验失败", verifyMsgSign(respXml, respSign, rsaHelper));
-
+        if (!verifyMsgSign(respXml, respSign, rsaHelper)) {
+            log.error("金运通返回结果验签失败");
+            return null;
+        }
         return respXml;
     }
 
