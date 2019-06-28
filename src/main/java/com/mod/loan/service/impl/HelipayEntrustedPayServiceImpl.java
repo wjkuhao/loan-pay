@@ -305,7 +305,7 @@ public class HelipayEntrustedPayServiceImpl implements HelipayEntrustedPayServic
             logger.info("响应结果：" + result);
             //响应结果：{"rt6_userId":"U1702451476","rt2_retCode":"0000","rt7_serialNumber":"1235976","rt9_timestamp":"2019-05-31_14:45:10.059","rt8_orderStatus":"RECEIVE","sign":"88123913e88b4ed64fce8b566b6e3f60","rt1_bizType":"EntrustedLoanTransfer","rt5_orderId":"p201905311444581","rt4_customerNumber":"C1800685715","rt3_retMsg":"请求成功"}
             orderResVo = JSONObject.parseObject(result, OrderResVo.class);
-            if (null == orderResVo || "".equals(orderResVo)) {
+            if (null == orderResVo) {
                 orderResVo.setRt2_retCode("-1");
                 orderResVo.setRt3_retMsg("合利宝返回结果为空");
                 return orderResVo;
@@ -361,7 +361,7 @@ public class HelipayEntrustedPayServiceImpl implements HelipayEntrustedPayServic
             String result = HttpClientService.getHttpResp(map, HelipayConstant.REQUEST_URL);
             logger.info("响应结果：" + result);
             orderQueryResVo = JSONObject.parseObject(result, OrderQueryResVo.class);
-            if (null == orderQueryResVo || "".equals(orderQueryResVo)) {
+            if (null == orderQueryResVo) {
                 orderQueryResVo.setRt2_retCode("-1");
                 orderQueryResVo.setRt3_retMsg("合利宝查询返回结果为空");
                 return orderQueryResVo;
