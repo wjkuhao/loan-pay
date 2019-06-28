@@ -927,7 +927,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             orderService.updatePayCallbackInfo(order1, orderPay1);
             // 给用户短信通知 放款成功
             User user = userService.selectByPrimaryKey(order.getUid());
-            smsService.send(order.getMerchant(), SmsTemplate.T2001.getKey(), SmsTemplate.T2001.getKey(),
+            smsService.send(order.getMerchant(), SmsTemplate.T2001.getKey(), user.getUserPhone(),
                     order.getActualMoney() + "|" + new DateTime(repayTime).toString("MM月dd日"), user.getUserOrigin());
         } else {
             logger.error("查询代付结果异常,payNo={}", payNo);
