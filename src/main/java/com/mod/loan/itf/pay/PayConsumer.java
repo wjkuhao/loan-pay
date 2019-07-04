@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.mod.loan.common.message.OrderPayMessage;
 import com.mod.loan.config.redis.RedisConst;
 import com.mod.loan.config.redis.RedisMapper;
+import com.mod.loan.model.Order;
 import com.mod.loan.service.*;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -48,6 +49,13 @@ public class PayConsumer {
             logger.error("orderId={}已存在放款成功记录,本次放款取消", payMessage.getOrderId());
             return;
         }
+
+        //一天不能重复放款
+        Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
+        if (!orderPayService.checkPayCondition(order)) {
+            return;
+        }
+
         String payType = StringUtils.isNotBlank(payMessage.getPayType()) ? payMessage.getPayType() : "";
         switch (payType) {
             case "helibao":

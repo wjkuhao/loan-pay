@@ -88,10 +88,6 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 return;
             }
 
-            if (!checkPayCondition(order)) {
-                return;
-            }
-
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -261,10 +257,6 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
                 return;
             }
 
-            if (!checkPayCondition(order)) {
-                return;
-            }
-
             Merchant merchant = merchantService.findMerchantByAlias(order.getMerchant());
             UserBank userBank = userBankService.selectUserCurrentBankCard(order.getUid());
             User user = userService.selectByPrimaryKey(order.getUid());
@@ -360,9 +352,6 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
             if (order.getStatus() != 22) { // 放款中的订单才能放款
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
-                return;
-            }
-            if (!checkPayCondition(order)) {
                 return;
             }
 
@@ -778,10 +767,6 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
             if (order.getStatus() != 22) { // 放款中的订单才能放款
                 logger.info("订单放款，无效的订单状态 message={}", JSON.toJSONString(payMessage));
-                return;
-            }
-
-            if (!checkPayCondition(order)) {
                 return;
             }
 
