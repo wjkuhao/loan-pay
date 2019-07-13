@@ -53,6 +53,7 @@ public class PayConsumer {
         //一天不能重复放款
         Order order = orderService.selectByPrimaryKey(payMessage.getOrderId());
         if (!orderPayService.checkPayCondition(order)) {
+            logger.error("PayConsumer.checkPayCondition检查失败,重复放款或订单金额超限");
             return;
         }
 
