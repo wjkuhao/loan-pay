@@ -881,6 +881,7 @@ public class OrderPayServiceImpl extends BaseServiceImpl<OrderPay, String> imple
             return false;
         }
 
+        //查询放款中的订单和放款成功
         int count = orderService.countOrderPaySuccessOneDay(order.getUid());
         if (count > 1) {
             order.setStatus(23);
